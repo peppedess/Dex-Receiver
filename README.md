@@ -1,35 +1,46 @@
 # DeX Receiver
 
-Android Wi-Fi Display / Miracast receiver feasibility project.
+Android Wi-Fi Display / Miracast receiver prototype targeting the rooted Xiaomi Mi 10T Pro (apollo/apollon).
 
-**Current status: protocol groundwork only — not yet a Miracast sink and not yet compatible with Samsung DeX.** The app currently has a basic network diagnostic prototype. It does not advertise a WFD sink, negotiate a complete RTSP/WFD session, receive RTP media, decode H.264/AAC, handle HDCP, or render DeX.
+**Status: experimental protocol prototype, not yet verified as a Samsung DeX-compatible sink.** The current branch contains an RTSP TCP control endpoint, a limited UDP/RTP + MPEG-TS receive path, PAT/PMT H.264 PID discovery, PES extraction, Annex-B access-unit assembly and a MediaCodec surface decoder. These pieces are connected, but complete Wi-Fi Display negotiation and end-to-end interoperability are not yet established.
 
-## Root access probe
+## Implemented in this milestone
 
-The app now includes a bounded `su` probe that reports the command output, exit status, SELinux mode, and Android release. This verifies only whether Magisk grants UID 0 to the app process. It does **not** grant Android signature permissions such as `CONFIGURE_WIFI_DISPLAY`, register a WFD sink, or implement Miracast media transport.
+- Wi-Fi Direct group creation and peer diagnostics.
+- Best-effort WFD information attached to WifiP2pConfig through hidden API reflection.
+- RTSP TCP listener on port 7236 with bounded message parsing.
+- Limited RTSP OPTIONS / GET_PARAMETER / SET_PARAMETER / SETUP / PLAY / TEARDOWN state handling.
+- UDP RTP listener on port 19000.
+- RTP validation and MPEG-TS 188-byte packet parsing.
+- PAT/PMT parsing to locate an H.264 elementary stream.
+- PES payload extraction and Annex-B H.264 access-unit assembly.
+- Android MediaCodec AVC decoder connected to an on-screen SurfaceView.
+- Root and Shizuku diagnostics.
 
-## Development roadmap
+## Known limitations — important
 
-1. **Platform capability / discovery** — determine whether target OEM firmware can expose a Wi-Fi Display sink without privileged permissions. Wi-Fi Direct alone is not sufficient.
-2. **RTSP control protocol** — bounded RTSP message parsing and state machine, followed by WFD parameter negotiation.
-3. **Media transport** — RTP/UDP or negotiated TCP transport, packet reordering and MPEG-TS depacketization as required by the negotiated profile.
-4. **Decode and render** — MediaCodec H.264 video and supported audio decoding, timestamps and surface lifecycle.
-5. **Samsung DeX interoperability** — test actual discovery, connection, video and audio from a Galaxy device.
+This is not yet a complete Miracast/WFD sink and may not appear in Samsung DeX's wireless display list. In particular:
 
-## Architecture milestone
+1. Full WFD M1–M7 capability negotiation is not implemented. The app does not yet advertise and negotiate a complete wfd_video_formats, audio codec, EDID, content-protection and presentation profile.
+2. The selected UDP transport is a narrow prototype; RTCP handling, packet reordering/loss recovery and all interoperability variants are not implemented.
+3. Audio decoding/rendering is not implemented.
+4. The decoder currently starts with a fixed 1920×1080 AVC format; negotiated resolution, codec profile, timing and dynamic format changes are not handled.
+5. HDCP-protected sessions are not supported.
+6. Android's public SDK does not expose a portable API to register an application as a Wi-Fi Display sink. Root does not automatically grant signature-only framework permissions such as CONFIGURE_WIFI_DISPLAY; the target ROM's Wi-Fi stack may still refuse to advertise this app as a sink.
 
-`wfd/WfdRtspParser.kt` introduces a bounded RTSP/1.0 request parser. It validates request lines, headers, content length and incomplete messages. It is intentionally not presented as a working WFD receiver: parsing RTSP is only one part of Miracast, and the Android public SDK does not provide a portable public API to register an application as a Wi-Fi Display sink.
+A successful APK build proves compilation only. It does not prove that the phone is discoverable by DeX or that a complete stream can be received. Do not treat an RTSP connection or a running decoder as proof of Miracast compatibility.
 
-## Optional Shizuku integration
+## Device and build
 
-The app includes the Shizuku API (12.1.0), a connection/authorization status check, and a best-effort attempt to attach WifiP2pWfdInfo to the Wi-Fi Direct group configuration on Android 11+. Shizuku itself is not root, but it must be installed and started by the user through Android Wireless debugging (Android 11+), then permission must be granted to DeX Receiver.
+- Target device: Xiaomi Mi 10T Pro, codename apollo / ROM flavor apollon.
+- Android 17, arm64-v8a, Magisk root.
+- JDK 17, Gradle 8.9, Android Gradle Plugin 8.5.2.
+- GitHub Actions publishes the debug APK as DeX-Receiver-debug-apk.
 
-Important: Shizuku authorization does not automatically grant the app the signature/privileged CONFIGURE_WIFI_DISPLAY permission, nor does it guarantee that the OEM Wi-Fi stack accepts the WFD information element. The current integration is a compatibility probe, not a verified privilege bypass. The app still does not implement the complete RTSP M1–M7 negotiation, RTP media receive/depacketization, or video decoding; it must not be described as a working DeX receiver yet.
+## Next engineering work
 
-## Build
-
-GitHub Actions builds the debug APK with JDK 17 and Gradle 8.9. See the Actions tab for the latest artifact.
-
-## Device target
-
-Initial target: Lenovo Tab M10 3rd Gen (TB328FU, Android 12), no root. A Galaxy S24 is the source device. The implementation must remain explicit about platform limitations; no fake connected state or simulated video is acceptable.
+- Implement and validate complete WFD parameter negotiation and source/sink capability matching.
+- Add negotiated RTP/RTCP transport, sequence handling and timestamp handling.
+- Add audio stream discovery and LPCM/AAC playback.
+- Use negotiated H.264 dimensions/profile and robust decoder reconfiguration.
+- Verify WFD advertisement and session establishment on the actual target ROM, then test Samsung DeX end to end.
