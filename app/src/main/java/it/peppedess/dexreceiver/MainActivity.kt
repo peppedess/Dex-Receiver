@@ -205,7 +205,12 @@ class MainActivity : Activity() {
                 log("Gruppo Wi-Fi Direct creato. Il dispositivo dovrebbe essere Group Owner.")
                 manager.requestConnectionInfo(channel) { info ->
                     log("Group Owner: ${info.isGroupOwner} · indirizzo: ${info.groupOwnerAddress?.hostAddress ?: "non ancora assegnato"}")
-                    updateStatus(if (info.groupFormed) "RETE RICEVITORE ATTIVA" else "GRUPPO IN CONFIGURAZIONE")
+                    if (info.groupFormed) {
+                        updateStatus("RETE P2P ATTIVA · RTSP IN AVVIO")
+                        startRtspServer()
+                    } else {
+                        updateStatus("GRUPPO IN CONFIGURAZIONE")
+                    }
                 }
                 manager.requestGroupInfo(channel) { groupInfo ->
                     if (groupInfo != null) {
