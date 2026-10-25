@@ -22,12 +22,20 @@ class RtcpPacketParserTest {
 
     @Test
     fun parsesCompoundSenderAndSourceDescriptionPackets() {
-        val compound = byteArrayOf(
-            0x80.toByte(), 200.toByte(), 0, 6,
-            0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0,
-            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-            0x81.toByte(), 202.toByte(), 0, 1, 0, 0, 0, 1
-        )
+        val compound = ByteArray(36)
+        compound[0] = 0x80.toByte()
+        compound[1] = 200.toByte()
+        compound[2] = 0
+        compound[3] = 6 // 28-byte Sender Report
+        compound[28] = 0x81.toByte()
+        compound[29] = 202.toByte()
+        compound[30] = 0
+        compound[31] = 1 // 8-byte SDES
+        compound[32] = 0
+        compound[33] = 0
+        compound[34] = 0
+        compound[35] = 1
+
         val parsed = RtcpPacketParser.parseCompound(compound)
         assertNotNull(parsed)
         assertEquals(listOf(200, 202), parsed!!.map { it.packetType })
