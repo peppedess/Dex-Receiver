@@ -377,7 +377,9 @@ class MainActivity : Activity() {
                 WfdRtspSession(
                     mediaPort = 19000,
                     onStartMedia = { port -> startMediaReceiver(port) },
-                    onStopMedia = { stopMediaReceiver() }
+                    onStopMedia = { stopMediaReceiver() },
+                    onPauseMedia = { mediaTransport?.pause() },
+                    onResumeMedia = { mediaTransport?.resume() }
                 )
             }
         )
