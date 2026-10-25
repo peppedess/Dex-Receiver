@@ -23,7 +23,9 @@ class RtcpPacketParserTest {
     @Test
     fun parsesCompoundSenderAndSourceDescriptionPackets() {
         val compound = byteArrayOf(
-            0x80.toByte(), 200.toByte(), 0, 1, 0, 0, 0, 1,
+            0x80.toByte(), 200.toByte(), 0, 6,
+            0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
             0x81.toByte(), 202.toByte(), 0, 1, 0, 0, 0, 1
         )
         val parsed = RtcpPacketParser.parseCompound(compound)
