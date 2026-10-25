@@ -97,6 +97,29 @@ class WfdRtspSessionTest {
     }
 
     @Test
+    fun rejectedSetParameterDoesNotPartiallyCommitPresentationUrl() {
+        val session = WfdRtspSession()
+        val body = "wfd_presentation_URL: rtsp://192.168.49.1/wfd1.0/streamid=0 none\\r\\n" +
+            "wfd_audio_codecs: LPCM 00000003 00\\r\\n"
+        assertTrue(session.handle(request("SET_PARAMETER", "12", body = body)).startsWith("RTSP/1.0 451"))
+        assertEquals(null, session.getPresentationUrl())
+    }
+
+    @Test
+    fun setupRejectsDuplicateSetupAndInvalidPortPair() {
+        var starts = 0
+        val session = WfdRtspSession(onStartMedia = { starts++; true })
+        val headers = mapOf("Transport" to "RTP/AVP/UDP;unicast;client_port=5000-5001")
+        assertTrue(session.handle(request("SETUP", "13", headers)).startsWith("RTSP/1.0 200"))
+        assertTrue(session.handle(request("SETUP", "14", headers)).startsWith("RTSP/1.0 455"))
+        assertEquals(1, starts)
+        val invalid = WfdRtspSession(onStartMedia = { true }).handle(request(
+            "SETUP", "15", mapOf("Transport" to "RTP/AVP/UDP;unicast;client_port=5000-5000")
+        ))
+        assertTrue(invalid.startsWith("RTSP/1.0 461"))
+    }
+
+    @Test
     fun missingCSeqIsRejected() {
         val response = WfdRtspSession().handle(request("OPTIONS", null))
         assertTrue(response.startsWith("RTSP/1.0 400"))
