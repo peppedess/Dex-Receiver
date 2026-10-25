@@ -128,14 +128,14 @@ class WfdRtspSessionTest {
     @Test
     fun setParameterRejectsVideoDescriptorThatWasNotAdvertised() {
         val session = WfdRtspSession()
-        val unsupported = "wfd_video_formats: 00 00 01 01 00000002 00000000 00000000 00 0000 0000 00 none none\\r\\n"
+        val unsupported = "wfd_video_formats: 00 00 01 01 00000002 00000000 00000000 00 0000 0000 00 none none\r\n"
         assertTrue(session.handle(request("SET_PARAMETER", "16", body = unsupported)).startsWith("RTSP/1.0 451"))
     }
 
     @Test
     fun setParameterAcceptsExactAdvertisedVideoDescriptor() {
         val session = WfdRtspSession()
-        val exact = "wfd_video_formats: 00 00 01 01 00000001 00000000 00000000 00 0000 0000 00 none none\\r\\n"
+        val exact = "wfd_video_formats: 00 00 01 01 00000001 00000000 00000000 00 0000 0000 00 none none\r\n"
         assertTrue(session.handle(request("SET_PARAMETER", "17", body = exact)).startsWith("RTSP/1.0 200"))
     }
 
