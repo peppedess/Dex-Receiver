@@ -24,8 +24,8 @@ import it.peppedess.dexreceiver.media.H264SurfaceDecoder
 import rikka.shizuku.Shizuku
 
 /**
- * DeX Receiver protocol-development build.
- * The app offers P2P diagnostics and a local RTSP endpoint, not a complete WFD sink.
+ * DeX Receiver experimental WFD sink prototype. Full source interoperability
+ * and complete Wi-Fi Display capability negotiation are not yet verified.
  */
 class MainActivity : Activity() {
     private lateinit var status: TextView
@@ -82,7 +82,7 @@ class MainActivity : Activity() {
             val configureWfd = checkSelfPermission("android.permission.CONFIGURE_WIFI_DISPLAY") == PackageManager.PERMISSION_GRANTED
             log("Permesso privilegiato CONFIGURE_WIFI_DISPLAY: ${if (configureWfd) "concesso" else "non disponibile"}")
         }
-        log("RTSP locale: TCP 7236 · WFD sink non ancora implementato")
+        log("RTSP TCP 7236 · RTP/TS/H.264 sperimentale · negoziazione WFD incompleta")
         updateStatus("PRONTO · DIAGNOSTICA P2P")
     }
 
