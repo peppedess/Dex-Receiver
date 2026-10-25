@@ -127,6 +127,10 @@ class MainActivity : Activity() {
             gravity = Gravity.CENTER
             setPadding(0, 18, 0, 18)
         }
+        val rootCheck = Button(this).apply {
+            text = "VERIFICA ACCESSO ROOT"
+            setOnClickListener { verifyRootAccess() }
+        }
         val shizuku = Button(this).apply {
             text = "COLLEGA SHIZUKU"
             setOnClickListener { connectShizuku() }
@@ -162,6 +166,7 @@ class MainActivity : Activity() {
         root.addView(title)
         root.addView(subtitle)
         root.addView(status)
+        root.addView(rootCheck)
         root.addView(shizuku)
         root.addView(discover)
         root.addView(group)
@@ -273,6 +278,20 @@ class MainActivity : Activity() {
             }
         })
     }
+    private fun verifyRootAccess() {
+        updateStatus("VERIFICA ROOT…")
+        Thread {
+            val result = RootAccess.run("id; getenforce; getprop ro.build.version.release")
+            val isRoot = result.exitCode == 0 && result.output.contains("uid=0(root)")
+            runOnUiThread {
+                log("Verifica root: ${if (isRoot) "CONFERMATO" else "NON DISPONIBILE"}")
+                result.output.lineSequence().filter { it.isNotBlank() }.forEach { log("ROOT> $it") }
+                if (result.timedOut) log("Comando root interrotto per timeout.")
+                updateStatus(if (isRoot) "ROOT ATTIVO · UID 0" else "ROOT NON CONFERMATO")
+            }
+        }.start()
+    }
+
     private fun refreshShizukuStatus() {
         try {
             val running = Shizuku.pingBinder()
