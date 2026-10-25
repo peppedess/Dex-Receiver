@@ -4,6 +4,10 @@ Android Wi-Fi Display / Miracast receiver feasibility project.
 
 **Current status: protocol groundwork only — not yet a Miracast sink and not yet compatible with Samsung DeX.** The app currently has a basic network diagnostic prototype. It does not advertise a WFD sink, negotiate a complete RTSP/WFD session, receive RTP media, decode H.264/AAC, handle HDCP, or render DeX.
 
+## Root access probe
+
+The app now includes a bounded `su` probe that reports the command output, exit status, SELinux mode, and Android release. This verifies only whether Magisk grants UID 0 to the app process. It does **not** grant Android signature permissions such as `CONFIGURE_WIFI_DISPLAY`, register a WFD sink, or implement Miracast media transport.
+
 ## Development roadmap
 
 1. **Platform capability / discovery** — determine whether target OEM firmware can expose a Wi-Fi Display sink without privileged permissions. Wi-Fi Direct alone is not sufficient.
