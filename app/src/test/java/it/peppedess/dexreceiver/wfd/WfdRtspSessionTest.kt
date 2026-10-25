@@ -64,7 +64,7 @@ class WfdRtspSessionTest {
 
     @Test
     fun getParameterReturnsRequestedWfdCapabilitiesWithCorrectLength() {
-        val body = "wfd_video_formats\\r\\nwfd_audio_codecs\\r\\nwfd_client_rtp_ports\\r\\n"
+        val body = "wfd_video_formats\r\nwfd_audio_codecs\r\nwfd_client_rtp_ports\r\n"
         val response = WfdRtspSession(mediaPort = 19000).handle(
             request("GET_PARAMETER", "8", body = body)
         )
@@ -73,25 +73,25 @@ class WfdRtspSessionTest {
         assertTrue(response.contains("wfd_audio_codecs: none"))
         assertTrue(response.contains("wfd_client_rtp_ports: RTP/AVP/UDP;unicast 19000 0 mode=play"))
         val declared = Regex("Content-Length: (\\d+)").find(response)!!.groupValues[1].toInt()
-        val responseBody = response.substringAfter("\\r\\n\\r\\n")
+        val responseBody = response.substringAfter("\r\n\r\n")
         assertEquals(declared, responseBody.toByteArray(Charsets.UTF_8).size)
     }
 
     @Test
     fun setParameterAcceptsWfdM4AndM5Parameters() {
         val session = WfdRtspSession()
-        val m4 = "wfd_video_formats: 00 00 01 01 00000001 00000000 00000000 00 0000 0000 00 none none\\r\\n" +
-            "wfd_audio_codecs: none\\r\\n" +
-            "wfd_presentation_URL: rtsp://192.168.49.1/wfd1.0/streamid=0 none\\r\\n"
+        val m4 = "wfd_video_formats: 00 00 01 01 00000001 00000000 00000000 00 0000 0000 00 none none\r\n" +
+            "wfd_audio_codecs: none\r\n" +
+            "wfd_presentation_URL: rtsp://192.168.49.1/wfd1.0/streamid=0 none\r\n"
         assertTrue(session.handle(request("SET_PARAMETER", "9", body = m4)).startsWith("RTSP/1.0 200 OK"))
         assertEquals("rtsp://192.168.49.1/wfd1.0/streamid=0", session.getPresentationUrl())
-        assertTrue(session.handle(request("SET_PARAMETER", "10", body = "wfd_trigger_method: SETUP\\r\\n")).startsWith("RTSP/1.0 200 OK"))
+        assertTrue(session.handle(request("SET_PARAMETER", "10", body = "wfd_trigger_method: SETUP\r\n")).startsWith("RTSP/1.0 200 OK"))
     }
 
     @Test
     fun unsupportedSelectedAudioCodecIsRejectedRatherThanFalselyAccepted() {
         val response = WfdRtspSession().handle(
-            request("SET_PARAMETER", "11", body = "wfd_audio_codecs: LPCM 00000003 00\\r\\n")
+            request("SET_PARAMETER", "11", body = "wfd_audio_codecs: LPCM 00000003 00\r\n")
         )
         assertTrue(response.startsWith("RTSP/1.0 451"))
     }
