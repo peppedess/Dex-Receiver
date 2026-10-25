@@ -48,8 +48,8 @@ object WfdRtspParser {
         }
 
         val rawCSeq = headers.entries.firstOrNull { it.key.equals("CSeq", true) }?.value
-        if (rawCSeq != null && (rawCSeq.isEmpty() || rawCSeq.any { !it.isDigit() } ||
-                rawCSeq.toLongOrNull() == null)) {
+            ?: return RtspParseResult.Error("Missing RTSP CSeq")
+        if (rawCSeq.isEmpty() || rawCSeq.any { !it.isDigit() } || rawCSeq.toLongOrNull() == null) {
             return RtspParseResult.Error("Invalid RTSP CSeq")
         }
 
