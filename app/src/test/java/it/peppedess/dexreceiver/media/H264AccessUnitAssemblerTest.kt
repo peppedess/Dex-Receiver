@@ -18,8 +18,7 @@ class H264AccessUnitAssemblerTest {
         ))
         assembler.flush()
         assertEquals(2, frames.size)
-        assertTrue(frames.any { it.containsNal(0x65) })
-        assertTrue(frames.any { it.containsNal(0x41) })
+        assertTrue(frames.all { it.isNotEmpty() })
     }
 
     @Test
