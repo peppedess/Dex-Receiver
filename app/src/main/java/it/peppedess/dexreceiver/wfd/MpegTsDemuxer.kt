@@ -15,6 +15,7 @@ class MpegTsDemuxer(
     private var videoPid: Int? = null
     private val lastContinuityByPid = HashMap<Int, Int>()
     private val sectionBuffers = HashMap<Int, ByteArrayOutputStream>()
+    private val awaitingPsiStart = HashSet<Int>()
     private val pesBuffer = ByteArrayOutputStream()
     private var awaitingVideoStart = true
 
@@ -23,6 +24,7 @@ class MpegTsDemuxer(
         videoPid = null
         lastContinuityByPid.clear()
         sectionBuffers.clear()
+        awaitingPsiStart.clear()
         pesBuffer.reset()
         awaitingVideoStart = true
     }
@@ -73,6 +75,7 @@ class MpegTsDemuxer(
 
     private fun discardPidState(pid: Int) {
         sectionBuffers.remove(pid)
+        if (pid == 0 || pid == pmtPid) awaitingPsiStart.add(pid)
         if (pid == videoPid) {
             pesBuffer.reset()
             awaitingVideoStart = true
@@ -81,8 +84,10 @@ class MpegTsDemuxer(
     }
 
     private fun consumePsi(pid: Int, start: Boolean, data: ByteArray) {
+        if (pid in awaitingPsiStart && !start) return
         var offset = 0
         if (start) {
+            awaitingPsiStart.remove(pid)
             if (data.isEmpty()) return
             val pointer = data[0].toInt() and 0xff
             offset = 1 + pointer
