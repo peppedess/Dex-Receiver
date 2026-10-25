@@ -1,6 +1,12 @@
 package it.peppedess.dexreceiver
 
+import android.Manifest
 import android.app.Activity
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import android.content.pm.PackageManager
 import android.net.wifi.p2p.WifiP2pManager
 import android.os.Build
 import android.os.Bundle
@@ -13,17 +19,31 @@ import it.peppedess.dexreceiver.wfd.WfdRtspTcpServer
 
 /**
  * DeX Receiver protocol-development build.
- *
- * Hosts a local RTSP endpoint on TCP/7236. It is not yet a Miracast/WFD sink:
- * no Wi-Fi Display discovery/advertisement, WFD capability negotiation,
- * RTP media transport, or video/audio decoding is implemented.
+ * The app offers P2P diagnostics and a local RTSP endpoint, not a complete WFD sink.
  */
 class MainActivity : Activity() {
     private lateinit var status: TextView
     private lateinit var logView: TextView
     private var wifiP2pManager: WifiP2pManager? = null
+    private var p2pChannel: WifiP2pManager.Channel? = null
+    private var receiverRegistered = false
     @Volatile private var rtspServer: WfdRtspTcpServer? = null
     private val logLines = mutableListOf<String>()
+
+    private val p2pReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            if (intent.action == WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION) {
+                val enabled = intent.getIntExtra(WifiP2pManager.EXTRA_WIFI_STATE, -1) ==
+                    WifiP2pManager.WIFI_P2P_STATE_ENABLED
+                log("Wi-Fi Direct: ${if (enabled) "abilitato" else "disabilitato"}")
+            } else if (intent.action == WifiP2pManager.WIFI_P2P_PEERS_CHANGED_ACTION) {
+                requestPeerList()
+            } else if (intent.action == WifiP2pManager.WIFI_P2P_DISCOVERY_CHANGED_ACTION) {
+                val state = intent.getIntExtra(WifiP2pManager.EXTRA_DISCOVERY_STATE, -1)
+                log("Discovery P2P: ${if (state == WifiP2pManager.WIFI_P2P_DISCOVERY_STARTED) "avviata" else "terminata"}")
+            }
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -32,9 +52,29 @@ class MainActivity : Activity() {
         log("Dispositivo: ${Build.MANUFACTURER} ${Build.MODEL}")
         log("Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})")
         log("Framework Wi-Fi Direct: ${if (wifiP2pManager != null) "presente" else "assente"}")
-        log("Endpoint RTSP previsto: TCP 7236")
-        log("WFD sink/discovery e ricezione video: non ancora implementati.")
-        updateStatus("PRONTO · RTSP NON AVVIATO")
+        log("RTSP locale: TCP 7236 · WFD sink non ancora implementato")
+        updateStatus("PRONTO · DIAGNOSTICA P2P")
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (!receiverRegistered) {
+            val filter = IntentFilter().apply {
+                addAction(WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION)
+                addAction(WifiP2pManager.WIFI_P2P_PEERS_CHANGED_ACTION)
+                addAction(WifiP2pManager.WIFI_P2P_DISCOVERY_CHANGED_ACTION)
+            }
+            registerReceiver(p2pReceiver, filter)
+            receiverRegistered = true
+        }
+    }
+
+    override fun onPause() {
+        if (receiverRegistered) {
+            unregisterReceiver(p2pReceiver)
+            receiverRegistered = false
+        }
+        super.onPause()
     }
 
     private fun buildUi() {
@@ -50,18 +90,22 @@ class MainActivity : Activity() {
             gravity = Gravity.CENTER
         }
         val subtitle = TextView(this).apply {
-            text = "WIFI DISPLAY · RTSP PROTOCOL"
+            text = "WIFI DIRECT · RTSP PROTOCOL"
             textSize = 11f
             letterSpacing = 0.15f
             setTextColor(0xFFAAA3C5.toInt())
             gravity = Gravity.CENTER
-            setPadding(0, 8, 0, 28)
+            setPadding(0, 8, 0, 24)
         }
         status = TextView(this).apply {
             textSize = 18f
             setTextColor(0xFFBBA5FF.toInt())
             gravity = Gravity.CENTER
-            setPadding(0, 22, 0, 22)
+            setPadding(0, 18, 0, 18)
+        }
+        val discover = Button(this).apply {
+            text = "CERCA DISPOSITIVI WI-FI DIRECT"
+            setOnClickListener { discoverPeers() }
         }
         val start = Button(this).apply {
             text = "AVVIA SERVER RTSP · 7236"
@@ -72,10 +116,10 @@ class MainActivity : Activity() {
             setOnClickListener { stopRtspServer() }
         }
         val note = TextView(this).apply {
-            text = "STATO SVILUPPO: il server accetta connessioni RTSP e gestisce richieste di base. La negoziazione Wi‑Fi Display, SETUP/PLAY, RTP e decodifica video non sono ancora disponibili: il Galaxy non potrà ancora trasmettere DeX a questa app."
+            text = "La ricerca elenca i peer Wi-Fi Direct visibili: non equivale alla discovery Miracast/WFD. Il server RTSP è ancora parziale; SETUP/PLAY, RTP e decodifica video non sono implementati. Questa versione non riceve ancora DeX."
             textSize = 13f
             setTextColor(0xFFD0CCDD.toInt())
-            setPadding(0, 18, 0, 18)
+            setPadding(0, 14, 0, 14)
         }
         logView = TextView(this).apply {
             textSize = 12f
@@ -86,11 +130,55 @@ class MainActivity : Activity() {
         root.addView(title)
         root.addView(subtitle)
         root.addView(status)
+        root.addView(discover)
         root.addView(start)
         root.addView(stop)
         root.addView(note)
         root.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
         setContentView(root)
+    }
+
+    private fun discoverPeers() {
+        if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION), 410)
+            log("Concedi la posizione per consentire la scansione Wi-Fi Direct, poi premi di nuovo il pulsante.")
+            return
+        }
+        val manager = wifiP2pManager
+        val channel = p2pChannel ?: manager?.initialize(this, mainLooper) { log("Canale Wi-Fi Direct disconnesso.") }
+            ?.also { p2pChannel = it }
+        if (manager == null || channel == null) {
+            log("Wi-Fi Direct non disponibile su questo dispositivo.")
+            return
+        }
+        updateStatus("RICERCA PEER WI-FI DIRECT…")
+        manager.discoverPeers(channel, object : WifiP2pManager.ActionListener {
+            override fun onSuccess() {
+                log("Richiesta di discovery Wi-Fi Direct avviata.")
+            }
+            override fun onFailure(reason: Int) {
+                log("Discovery non avviata. Codice errore: $reason")
+                updateStatus("DISCOVERY NON DISPONIBILE")
+            }
+        })
+    }
+
+    private fun requestPeerList() {
+        val manager = wifiP2pManager ?: return
+        val channel = p2pChannel ?: return
+        try {
+            manager.requestPeers(channel) { peers ->
+                val list = peers.deviceList
+                log("Peer Wi-Fi Direct trovati: ${list.size}")
+                if (list.isEmpty()) log("Nessun peer visibile. Questo non dimostra l'assenza del supporto WFD.")
+                list.forEach { device ->
+                    log("Peer: ${device.deviceName.ifBlank { "senza nome" }} · ${device.deviceAddress} · stato ${device.status}")
+                }
+                updateStatus("PEER TROVATI · ${list.size}")
+            }
+        } catch (e: SecurityException) {
+            log("Permesso mancante per leggere i peer Wi-Fi Direct.")
+        }
     }
 
     private fun startRtspServer() {
