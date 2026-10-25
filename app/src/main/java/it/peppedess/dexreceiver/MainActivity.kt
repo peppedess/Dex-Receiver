@@ -12,11 +12,15 @@ import android.net.wifi.p2p.WifiP2pConfig
 import android.os.Build
 import android.os.Bundle
 import android.view.Gravity
+import android.view.SurfaceView
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import it.peppedess.dexreceiver.wfd.WfdRtspTcpServer
+import it.peppedess.dexreceiver.wfd.WfdRtspSession
+import it.peppedess.dexreceiver.wfd.WfdMediaTransport
+import it.peppedess.dexreceiver.media.H264SurfaceDecoder
 import rikka.shizuku.Shizuku
 
 /**
@@ -26,6 +30,9 @@ import rikka.shizuku.Shizuku
 class MainActivity : Activity() {
     private lateinit var status: TextView
     private lateinit var logView: TextView
+    private lateinit var videoSurface: SurfaceView
+    @Volatile private var videoDecoder: H264SurfaceDecoder? = null
+    @Volatile private var mediaTransport: WfdMediaTransport? = null
     private var wifiP2pManager: WifiP2pManager? = null
     private var p2pChannel: WifiP2pManager.Channel? = null
     private var receiverRegistered = false
@@ -127,6 +134,9 @@ class MainActivity : Activity() {
             gravity = Gravity.CENTER
             setPadding(0, 18, 0, 18)
         }
+        videoSurface = SurfaceView(this).apply {
+            setBackgroundColor(0xFF050508.toInt())
+        }
         val rootCheck = Button(this).apply {
             text = "VERIFICA ACCESSO ROOT"
             setOnClickListener { verifyRootAccess() }
@@ -152,7 +162,7 @@ class MainActivity : Activity() {
             setOnClickListener { stopRtspServer() }
         }
         val note = TextView(this).apply {
-            text = "La ricerca elenca i peer Wi-Fi Direct visibili: non equivale alla discovery Miracast/WFD. Il server RTSP è ancora parziale; SETUP/PLAY, RTP e decodifica video non sono implementati. Questa versione non riceve ancora DeX."
+            text = "Ricevitore Miracast sperimentale: controllo RTSP e pipeline RTP/MPEG-TS/H.264 in sviluppo. Compatibilità DeX non garantita; audio e negoziazione completa dei profili WFD non sono ancora disponibili."
             textSize = 13f
             setTextColor(0xFFD0CCDD.toInt())
             setPadding(0, 14, 0, 14)
@@ -166,6 +176,7 @@ class MainActivity : Activity() {
         root.addView(title)
         root.addView(subtitle)
         root.addView(status)
+        root.addView(videoSurface, LinearLayout.LayoutParams(-1, 220))
         root.addView(rootCheck)
         root.addView(shizuku)
         root.addView(discover)
@@ -355,11 +366,21 @@ class MainActivity : Activity() {
             log("Il server RTSP è già attivo.")
             return
         }
-        val server = WfdRtspTcpServer(7236) { message ->
-            log(message)
-            if (message.startsWith("RTSP in ascolto")) updateStatus("RTSP ATTIVO · TCP 7236")
-            if (message.startsWith("Errore server")) updateStatus("ERRORE SERVER")
-        }
+        val server = WfdRtspTcpServer(
+            port = 7236,
+            onLog = { message ->
+                log(message)
+                if (message.startsWith("RTSP in ascolto")) updateStatus("RTSP ATTIVO · TCP 7236")
+                if (message.startsWith("Errore server")) updateStatus("ERRORE SERVER")
+            },
+            sessionFactory = {
+                WfdRtspSession(
+                    mediaPort = 19000,
+                    onStartMedia = { port -> startMediaReceiver(port) },
+                    onStopMedia = { stopMediaReceiver() }
+                )
+            }
+        )
         rtspServer = server
         updateStatus("AVVIO SERVER RTSP…")
         if (!server.start()) {
@@ -368,9 +389,49 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun startMediaReceiver(port: Int): Boolean {
+        return try {
+            if (!videoSurface.holder.surface.isValid) {
+                log("Surface video non pronta: SETUP rifiutato.")
+                return false
+            }
+            stopMediaReceiver()
+            val decoder = H264SurfaceDecoder(videoSurface.holder.surface) { message -> log(message) }
+            if (!decoder.start(1920, 1080)) return false
+            val transport = WfdMediaTransport(
+                rtpPort = port,
+                onH264AccessUnit = { accessUnit ->
+                    if (!decoder.queueAccessUnit(accessUnit)) {
+                        log("Frame H.264 non accettato dal decoder.")
+                    }
+                },
+                onLog = { message -> log(message) }
+            )
+            if (!transport.start()) {
+                decoder.stop()
+                return false
+            }
+            videoDecoder = decoder
+            mediaTransport = transport
+            updateStatus("FLUSSO RTP ATTIVO · UDP $port")
+            true
+        } catch (t: Throwable) {
+            log("Avvio pipeline video fallito: ${t.message}")
+            false
+        }
+    }
+
+    private fun stopMediaReceiver() {
+        mediaTransport?.stop()
+        mediaTransport = null
+        videoDecoder?.stop()
+        videoDecoder = null
+    }
+
     private fun stopRtspServer() {
         rtspServer?.stop()
         rtspServer = null
+        stopMediaReceiver()
         stopReceiverGroup()
         updateStatus("SERVER E RETE P2P FERMI")
         log("Server RTSP arrestato.")
