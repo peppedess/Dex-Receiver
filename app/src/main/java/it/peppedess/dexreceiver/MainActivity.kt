@@ -163,7 +163,7 @@ class MainActivity : Activity() {
             setOnClickListener { stopRtspServer() }
         }
         val note = TextView(this).apply {
-            text = "Ricevitore Miracast sperimentale: controllo RTSP e pipeline RTP/MPEG-TS/H.264 in sviluppo. Compatibilità DeX non garantita; audio e negoziazione completa dei profili WFD non sono ancora disponibili."
+            text = "Ricevitore WFD sperimentale. Su Android 14+ viene richiesto al framework l’annuncio PRIMARY_SINK e la modalità LISTEN. Se CONFIGURE_WIFI_DISPLAY è negato, il gruppo P2P e RTSP restano solo diagnostici: DeX potrebbe non vedere il telefono."
             textSize = 13f
             setTextColor(0xFFD0CCDD.toInt())
             setPadding(0, 14, 0, 14)
