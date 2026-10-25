@@ -91,8 +91,8 @@ class WfdRtspSession(
 
     /** This build supports only the exact conservative descriptor it advertises. */
     private fun isSupportedVideoFormat(value: String): Boolean {
-        val fields = value.trim().split(Regex("\\\\s+"))
-        val advertised = VIDEO_FORMAT.split(Regex("\\\\s+"))
+        val fields = value.trim().split(Regex("\\s+"))
+        val advertised = VIDEO_FORMAT.split(Regex("\\s+"))
         return fields.size == advertised.size && fields.zip(advertised).all { (actual, expected) ->
             actual.equals(expected, ignoreCase = true)
         }
