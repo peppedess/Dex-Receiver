@@ -70,7 +70,7 @@ class WfdRtspSession(
         // Validate the complete request before mutating session state. A rejected
         // SET_PARAMETER must never leave half of an M4 negotiation committed.
         val selectedVideo = parameters["wfd_video_formats"]
-        if (selectedVideo != null && !selectedVideo.contains("00000001")) {
+        if (selectedVideo != null && !isSupportedVideoFormat(selectedVideo)) {
             return response(451, "Parameter Not Understood", cseq)
         }
         val selectedAudio = parameters["wfd_audio_codecs"]
@@ -87,6 +87,15 @@ class WfdRtspSession(
         if (selectedUrl != null) presentationUrl = selectedUrl
         // M5 trigger is acknowledged; the source then opens the RTSP SETUP request.
         return response(200, "OK", cseq)
+    }
+
+    /** This build supports only the exact conservative descriptor it advertises. */
+    private fun isSupportedVideoFormat(value: String): Boolean {
+        val fields = value.trim().split(Regex("\\\\s+"))
+        val advertised = VIDEO_FORMAT.split(Regex("\\\\s+"))
+        return fields.size == advertised.size && fields.zip(advertised).all { (actual, expected) ->
+            actual.equals(expected, ignoreCase = true)
+        }
     }
 
     private fun parseParameters(body: String): Map<String, String>? {
