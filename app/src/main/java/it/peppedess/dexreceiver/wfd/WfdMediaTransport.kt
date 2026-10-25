@@ -19,6 +19,7 @@ class WfdMediaTransport(
     )
     private var receiver: UdpRtpReceiver? = null
     @Volatile private var paused = true
+    @Volatile private var rtcpReceiver: UdpRtcpReceiver? = null
     private val reorderBuffer = RtpReorderBuffer(
         maxBufferedPackets = 32,
         onPacket = ::consumeOrderedRtp,
@@ -34,9 +35,29 @@ class WfdMediaTransport(
             onLog = onLog
         )
         if (!next.start()) return false
+        val rtcp = UdpRtcpReceiver(
+            port = rtpPort + 1,
+            onPackets = { packets ->
+                packets.forEach { packet ->
+                    when (packet.packetType) {
+                        200 -> onLog("RTCP Sender Report ricevuto (report blocks: ${packet.count}).")
+                        201 -> onLog("RTCP Receiver Report ricevuto (report blocks: ${packet.count}).")
+                        202 -> onLog("RTCP SDES ricevuto.")
+                        203 -> onLog("RTCP BYE ricevuto.")
+                        else -> onLog("RTCP packet type ${packet.packetType} ricevuto.")
+                    }
+                }
+            },
+            onLog = onLog
+        )
+        if (!rtcp.start()) {
+            next.stop()
+            return false
+        }
         receiver = next
+        rtcpReceiver = rtcp
         paused = true
-        onLog("Trasporto WFD UDP/RTP pronto sulla porta $rtpPort (in attesa di PLAY).")
+        onLog("Trasporto WFD RTP/RTCP pronto sulle porte $rtpPort/${rtpPort + 1} (in attesa di PLAY).")
         return true
     }
 
@@ -44,6 +65,8 @@ class WfdMediaTransport(
     fun stop() {
         receiver?.stop()
         receiver = null
+        rtcpReceiver?.stop()
+        rtcpReceiver = null
         paused = true
         reorderBuffer.reset()
         demuxer.flush()
