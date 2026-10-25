@@ -277,7 +277,18 @@ class MainActivity : Activity() {
         try {
             val running = Shizuku.pingBinder()
             val granted = running && Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED
-            log("Shizuku: " + if (!running) "non attivo" else if (granted) "collegato e autorizzato" else "attivo, autorizzazione da concedere")
+            if (!running) {
+                log("Shizuku: non attivo.")
+            } else {
+                val uid = Shizuku.getUid()
+                val identity = when (uid) {
+                    0 -> "ROOT (UID 0)"
+                    2000 -> "ADB SHELL (UID 2000)"
+                    else -> "UID $uid"
+                }
+                log("Shizuku attivo · identità: $identity · app autorizzata: $granted")
+                log("Nota: Shizuku non trasforma l'UID shell in un'app firmata dal sistema; CONFIGURE_WIFI_DISPLAY resta un permesso signature.")
+            }
         } catch (t: Throwable) {
             log("Shizuku non disponibile: " + t.javaClass.simpleName)
         }
