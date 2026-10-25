@@ -14,7 +14,8 @@ class WfdMediaTransport(
     private val assembler = H264AccessUnitAssembler(onH264AccessUnit, onLog)
     private val demuxer = MpegTsDemuxer(
         onVideoPes = assembler::consume,
-        onLog = onLog
+        onLog = onLog,
+        onVideoDiscontinuity = assembler::discardPartial
     )
     private var receiver: UdpRtpReceiver? = null
     private val reorderBuffer = RtpReorderBuffer(
@@ -55,6 +56,7 @@ class WfdMediaTransport(
         val packets = MpegTsPacketParser.split(rtp.payload)
         if (packets == null) {
             onLog("Payload RTP non allineato a pacchetti MPEG-TS da 188 byte.")
+            demuxer.resetVideoStream()
         } else {
             packets.forEach(demuxer::consume)
         }
