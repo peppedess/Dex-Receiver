@@ -101,7 +101,7 @@ class MpegTsDemuxer(
     private fun consumePes(start: Boolean, data: ByteArray) {
         if (start) {
             flush()
-            if (data.size < 9 || data[0] != 0 || data[1] != 0 || (data[2].toInt() and 0xff) != 1) {
+            if (data.size < 9 || (data[0].toInt() and 0xff) != 0 || (data[1].toInt() and 0xff) != 0 || (data[2].toInt() and 0xff) != 1) {
                 onLog("Header PES video non valido.")
                 return
             }
