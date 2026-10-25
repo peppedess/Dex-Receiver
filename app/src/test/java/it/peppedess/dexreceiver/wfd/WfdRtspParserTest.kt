@@ -33,12 +33,12 @@ class WfdRtspParserTest {
     }
 
     @Test fun rejectsNonNumericCSeq() {
-        val raw = "OPTIONS * RTSP/1.0\\r\\nCSeq: abc\\r\\n\\r\\n"
+        val raw = "OPTIONS * RTSP/1.0\r\nCSeq: abc\r\n\r\n"
         assertTrue(WfdRtspParser.parse(raw) is RtspParseResult.Error)
     }
 
     @Test fun rejectsOverflowingCSeq() {
-        val raw = "OPTIONS * RTSP/1.0\\r\\nCSeq: 999999999999999999999999\\r\\n\\r\\n"
+        val raw = "OPTIONS * RTSP/1.0\r\nCSeq: 999999999999999999999999\r\n\r\n"
         assertTrue(WfdRtspParser.parse(raw) is RtspParseResult.Error)
     }
 
