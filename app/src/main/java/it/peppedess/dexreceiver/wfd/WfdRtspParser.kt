@@ -30,9 +30,10 @@ object WfdRtspParser {
         }
 
         val lines = headerText.split("\r\n")
-        val requestLine = lines.firstOrNull()?.trim().orEmpty().split(Regex("\\s+"))
-        if (requestLine.size != 3 || requestLine[0].isBlank() ||
-            requestLine[1].isBlank() || requestLine[2] != "RTSP/1.0") {
+        val requestLine = lines.firstOrNull()?.split(' ') ?: emptyList()
+        if (requestLine.size != 3 || requestLine.any { it.isEmpty() } ||
+            !isToken(requestLine[0]) || requestLine[1].any { it.code <= 0x20 || it.code == 0x7f } ||
+            requestLine[2] != "RTSP/1.0") {
             return RtspParseResult.Error("Invalid RTSP request line")
         }
 
@@ -41,15 +42,17 @@ object WfdRtspParser {
             val separator = line.indexOf(':')
             if (separator <= 0) return RtspParseResult.Error("Malformed RTSP header")
             val name = line.substring(0, separator).trim()
-            if (name.isEmpty() || headers.keys.any { it.equals(name, true) }) {
-                return RtspParseResult.Error("Empty or duplicate RTSP header")
+            val value = line.substring(separator + 1).trim()
+            if (!isToken(name) || value.any { (it.code < 0x20 && it != '\t') || it.code == 0x7f } ||
+                headers.keys.any { it.equals(name, true) }) {
+                return RtspParseResult.Error("Invalid or duplicate RTSP header")
             }
-            headers[name] = line.substring(separator + 1).trim()
+            headers[name] = value
         }
 
         val rawCSeq = headers.entries.firstOrNull { it.key.equals("CSeq", true) }?.value
             ?: return RtspParseResult.Error("Missing RTSP CSeq")
-        if (rawCSeq.isEmpty() || rawCSeq.any { !it.isDigit() } || rawCSeq.toLongOrNull() == null) {
+        if (rawCSeq.isEmpty() || rawCSeq.any { it !in '0'..'9' } || rawCSeq.toLongOrNull() == null) {
             return RtspParseResult.Error("Invalid RTSP CSeq")
         }
 
@@ -67,4 +70,7 @@ object WfdRtspParser {
             RtspRequest(requestLine[0].uppercase(), requestLine[1], requestLine[2], headers.toMap(), body)
         )
     }
+
+    private fun isToken(value: String): Boolean =
+        value.isNotEmpty() && value.matches(Regex("[!#$%&'*+\\-.^_`|~0-9A-Za-z]+"))
 }
