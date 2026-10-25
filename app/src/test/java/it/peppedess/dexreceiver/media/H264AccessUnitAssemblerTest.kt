@@ -11,7 +11,7 @@ class H264AccessUnitAssemblerTest {
         val assembler = H264AccessUnitAssembler({ frames += it })
         assembler.consume(byteArrayOf(
             0, 0, 0, 1, 0x67, 0x42, 0x00, 0x1e,
-            0, 0, 0, 1, 0x68, 0xce, 0x06, 0xe2.toByte(),
+            0, 0, 0, 1, 0x68, 0xce.toByte(), 0x06, 0xe2.toByte(),
             0, 0, 0, 1, 0x65, 0x80.toByte(), 0x11,
             0, 0, 0, 1, 0x41, 0x80.toByte(), 0x22
         ))
