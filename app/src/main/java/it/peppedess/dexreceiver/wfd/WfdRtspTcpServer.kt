@@ -20,12 +20,13 @@ class WfdRtspTcpServer(
 ) {
     private val running = AtomicBoolean(false)
     private val clients = ConcurrentHashMap.newKeySet<Socket>()
-    private val workers = Executors.newCachedThreadPool()
+    @Volatile private var workers = Executors.newCachedThreadPool()
     @Volatile private var listener: ServerSocket? = null
     private var acceptThread: Thread? = null
 
     fun start(): Boolean {
         if (!running.compareAndSet(false, true)) return false
+        if (workers.isShutdown) workers = Executors.newCachedThreadPool()
         acceptThread = Thread({
             try {
                 val socket = ServerSocket(port)
