@@ -53,9 +53,9 @@ class WfdRtspSession(
     fun isPlaying(): Boolean = playing
 
     private fun response(code: Int, reason: String, cseq: String?, extra: List<String> = emptyList()): String = buildString {
-        append("RTSP/1.0 ").append(code).append(' ').append(reason).append("\\r\\n")
-        if (cseq != null) append("CSeq: ").append(cseq).append("\\r\\n")
-        extra.forEach { append(it).append("\\r\\n") }
-        append("Content-Length: 0\\r\\n\\r\\n")
+        append("RTSP/1.0 ").append(code).append(' ').append(reason).append("\r\n")
+        if (cseq != null) append("CSeq: ").append(cseq).append("\r\n")
+        extra.forEach { append(it).append("\r\n") }
+        append("Content-Length: 0\r\n\r\n")
     }
 }
