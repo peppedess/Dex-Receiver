@@ -17,20 +17,18 @@ class WfdMediaTransport(
         onLog = onLog
     )
     private var receiver: UdpRtpReceiver? = null
+    private val reorderBuffer = RtpReorderBuffer(
+        maxBufferedPackets = 32,
+        onPacket = ::consumeOrderedRtp,
+        onPacketLoss = { count -> onLog("Persi $count pacchetti RTP: salto al successivo pacchetto disponibile.") }
+    )
 
     @Synchronized
     fun start(): Boolean {
         if (receiver?.isRunning() == true) return true
         val next = UdpRtpReceiver(
             port = rtpPort,
-            onPacket = { rtp ->
-                val packets = MpegTsPacketParser.split(rtp.payload)
-                if (packets == null) {
-                    onLog("Payload RTP non allineato a pacchetti MPEG-TS da 188 byte.")
-                } else {
-                    packets.forEach(demuxer::consume)
-                }
-            },
+            onPacket = reorderBuffer::offer,
             onLog = onLog
         )
         if (!next.start()) return false
@@ -43,6 +41,7 @@ class WfdMediaTransport(
     fun stop() {
         receiver?.stop()
         receiver = null
+        reorderBuffer.reset()
         demuxer.flush()
         assembler.flush()
         demuxer.reset()
@@ -51,4 +50,13 @@ class WfdMediaTransport(
     }
 
     fun isRunning(): Boolean = receiver?.isRunning() == true
+
+    private fun consumeOrderedRtp(rtp: RtpPacket) {
+        val packets = MpegTsPacketParser.split(rtp.payload)
+        if (packets == null) {
+            onLog("Payload RTP non allineato a pacchetti MPEG-TS da 188 byte.")
+        } else {
+            packets.forEach(demuxer::consume)
+        }
+    }
 }
