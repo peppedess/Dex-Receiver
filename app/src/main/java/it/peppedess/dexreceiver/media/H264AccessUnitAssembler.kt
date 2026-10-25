@@ -12,6 +12,7 @@ class H264AccessUnitAssembler(
     private val stream = ByteArrayOutputStream()
     private val current = ByteArrayOutputStream()
     private var hasVcl = false
+    private var awaitingIdr = true
     private var hasSps = false
     private var hasPps = false
     private var sps = ByteArray(0)
@@ -40,6 +41,7 @@ class H264AccessUnitAssembler(
         hasVcl = false
         hasSps = false
         hasPps = false
+        awaitingIdr = true
     }
 
     @Synchronized fun reset() {
@@ -74,6 +76,8 @@ class H264AccessUnitAssembler(
             7 -> { sps = annexB(nal); hasSps = true; appendNal(nal) }
             8 -> { pps = annexB(nal); hasPps = true; appendNal(nal) }
             in 1..5 -> {
+                if (awaitingIdr && type != 5) return
+                if (type == 5) awaitingIdr = false
                 val firstMb = firstMbInSlice(nal)
                 if (type == 5 && !hasSps && sps.isNotEmpty()) current.write(sps)
                 if (type == 5 && !hasPps && pps.isNotEmpty()) current.write(pps)
