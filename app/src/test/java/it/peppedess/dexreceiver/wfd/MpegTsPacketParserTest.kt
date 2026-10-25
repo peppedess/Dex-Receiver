@@ -36,7 +36,7 @@ class MpegTsPacketParserTest {
         assertNull(MpegTsPacketParser.parse(ByteArray(187)))
         assertNull(MpegTsPacketParser.parse(ByteArray(188)))
         val one = ByteArray(188) { 0xff.toByte() }.also {
-            it[0] = 0x47; it[3] = 0x10
+            it[0] = 0x47; it[1] = 0; it[2] = 0; it[3] = 0x10
         }
         assertEquals(2, MpegTsPacketParser.split(one + one)!!.size)
         assertNull(MpegTsPacketParser.split(one + byteArrayOf(1)))
