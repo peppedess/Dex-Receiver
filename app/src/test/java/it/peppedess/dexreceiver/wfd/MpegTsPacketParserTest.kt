@@ -32,6 +32,17 @@ class MpegTsPacketParserTest {
         assertEquals(176, parsed.payload.size)
     }
 
+    @Test fun readsAdaptationDiscontinuityIndicator() {
+        val bytes = ByteArray(188) { 0xff.toByte() }
+        bytes[0] = 0x47
+        bytes[1] = 0x00
+        bytes[2] = 0x20
+        bytes[3] = 0x30
+        bytes[4] = 1
+        bytes[5] = 0x80.toByte()
+        assertTrue(MpegTsPacketParser.parse(bytes)!!.discontinuity)
+    }
+
     @Test fun rejectsInvalidFramingAndSplitsAlignedPayloads() {
         assertNull(MpegTsPacketParser.parse(ByteArray(187)))
         assertNull(MpegTsPacketParser.parse(ByteArray(188)))
