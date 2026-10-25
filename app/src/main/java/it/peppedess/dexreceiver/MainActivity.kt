@@ -111,6 +111,10 @@ class MainActivity : Activity() {
             text = "AVVIA SERVER RTSP · 7236"
             setOnClickListener { startRtspServer() }
         }
+        val group = Button(this).apply {
+            text = "CREA RETE WI-FI DIRECT"
+            setOnClickListener { createReceiverGroup() }
+        }
         val stop = Button(this).apply {
             text = "FERMA SERVER"
             setOnClickListener { stopRtspServer() }
@@ -131,6 +135,7 @@ class MainActivity : Activity() {
         root.addView(subtitle)
         root.addView(status)
         root.addView(discover)
+        root.addView(group)
         root.addView(start)
         root.addView(stop)
         root.addView(note)
@@ -181,6 +186,40 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun createReceiverGroup() {
+        if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION), 411)
+            log("Concedi la posizione e premi di nuovo CREA RETE WI-FI DIRECT.")
+            return
+        }
+        val manager = wifiP2pManager
+        val channel = p2pChannel ?: manager?.initialize(this, mainLooper) { log("Canale Wi-Fi Direct disconnesso.") }
+            ?.also { p2pChannel = it }
+        if (manager == null || channel == null) {
+            log("Wi-Fi Direct non disponibile.")
+            return
+        }
+        updateStatus("CREAZIONE RETE WI-FI DIRECT…")
+        manager.createGroup(channel, object : WifiP2pManager.ActionListener {
+            override fun onSuccess() {
+                log("Gruppo Wi-Fi Direct creato. Il dispositivo dovrebbe essere Group Owner.")
+                manager.requestConnectionInfo(channel) { info ->
+                    log("Group Owner: ${info.isGroupOwner} · indirizzo: ${info.groupOwnerAddress?.hostAddress ?: "non ancora assegnato"}")
+                    updateStatus(if (info.groupFormed) "RETE RICEVITORE ATTIVA" else "GRUPPO IN CONFIGURAZIONE")
+                }
+                manager.requestGroupInfo(channel) { groupInfo ->
+                    if (groupInfo != null) {
+                        log("SSID: ${groupInfo.networkName}")
+                        log("Client connessi: ${groupInfo.clientList.size}")
+                    }
+                }
+            }
+            override fun onFailure(reason: Int) {
+                log("Creazione gruppo fallita. Codice: $reason")
+                updateStatus("RETE WI-FI DIRECT NON CREATA")
+            }
+        })
+    }
     private fun startRtspServer() {
         if (rtspServer?.isRunning() == true) {
             log("Il server RTSP è già attivo.")
