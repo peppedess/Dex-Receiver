@@ -10,10 +10,9 @@ import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * Local RTSP TCP endpoint on the Wi-Fi Display control port.
- *
- * This is deliberately not advertised as a Miracast sink: the session layer
- * rejects WFD negotiation and media setup until those features are implemented.
+ * RTSP TCP endpoint on the Wi-Fi Display control port. The injected session
+ * factory connects RTSP SETUP to the experimental UDP/RTP media pipeline.
+ * This is still not a complete WFD negotiation implementation.
  */
 class WfdRtspTcpServer(
     private val port: Int = 7236,
