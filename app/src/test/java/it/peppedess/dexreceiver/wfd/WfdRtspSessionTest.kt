@@ -72,7 +72,7 @@ class WfdRtspSessionTest {
         assertTrue(response.contains("wfd_video_formats:"))
         assertTrue(response.contains("wfd_audio_codecs: none"))
         assertTrue(response.contains("wfd_client_rtp_ports: RTP/AVP/UDP;unicast 19000 0 mode=play"))
-        val declared = Regex("Content-Length: (\\\\d+)").find(response)!!.groupValues[1].toInt()
+        val declared = Regex("Content-Length: (\\d+)").find(response)!!.groupValues[1].toInt()
         val responseBody = response.substringAfter("\\r\\n\\r\\n")
         assertEquals(declared, responseBody.toByteArray(Charsets.UTF_8).size)
     }
