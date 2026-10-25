@@ -88,12 +88,12 @@ class WfdRtspTcpServer(
     }
 
     private fun handleClient(client: Socket) {
+        val session = sessionFactory()
         client.use { socket ->
             try {
                 socket.soTimeout = 15_000
                 val input = socket.getInputStream()
                 val output = socket.getOutputStream()
-                val session = sessionFactory()
                 onLog("Client RTSP connesso: ${socket.inetAddress.hostAddress}")
                 while (running.get() && !session.isClosed()) {
                     val message = readMessage(input) ?: break
@@ -117,6 +117,21 @@ class WfdRtspTcpServer(
             } catch (e: Exception) {
                 if (running.get()) onLog("Client RTSP terminato: ${e.message}")
             } finally {
+                if (!session.isClosed()) {
+                    try {
+                        session.handle(
+                            RtspRequest(
+                                method = "TEARDOWN",
+                                uri = "rtsp://localhost/wfd1.0",
+                                version = "RTSP/1.0",
+                                headers = mapOf("CSeq" to "0"),
+                                body = ""
+                            )
+                        )
+                    } catch (t: Throwable) {
+                        onLog("Pulizia sessione RTSP non riuscita: ${t.message}")
+                    }
+                }
                 clients.remove(client)
                 onLog("Client RTSP disconnesso.")
             }
