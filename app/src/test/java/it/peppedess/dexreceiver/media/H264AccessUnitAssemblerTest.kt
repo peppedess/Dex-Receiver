@@ -32,6 +32,24 @@ class H264AccessUnitAssemblerTest {
         assertEquals(2, frames.size)
     }
 
+    @Test
+    fun waitsForIdrAfterDiscontinuity() {
+        val frames = mutableListOf<ByteArray>()
+        val assembler = H264AccessUnitAssembler({ frames += it })
+        assembler.consume(byteArrayOf(0, 0, 0, 1, 0x65, 0x80.toByte(), 0x11))
+        assembler.flush()
+        assertEquals(1, frames.size)
+
+        assembler.discardPartial()
+        assembler.consume(byteArrayOf(0, 0, 0, 1, 0x41, 0x80.toByte(), 0x22))
+        assembler.flush()
+        assertEquals("P-frame after loss must be ignored", 1, frames.size)
+
+        assembler.consume(byteArrayOf(0, 0, 0, 1, 0x65, 0x80.toByte(), 0x33))
+        assembler.flush()
+        assertEquals("Decoding resumes at the next IDR", 2, frames.size)
+    }
+
     private fun ByteArray.containsNal(type: Int): Boolean {
         for (i in 0 until size - 4) {
             if (this[i] == 0.toByte() && this[i + 1] == 0.toByte() &&
