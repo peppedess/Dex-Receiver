@@ -146,6 +146,10 @@ class MainActivity : Activity() {
             text = "COLLEGA SHIZUKU"
             setOnClickListener { connectShizuku() }
         }
+        val firmwareDiag = Button(this).apply {
+            text = "DIAGNOSTICA WFD FIRMWARE"
+            setOnClickListener { runWfdFirmwareDiagnostics() }
+        }
         val discover = Button(this).apply {
             text = "CERCA DISPOSITIVI WI-FI DIRECT"
             setOnClickListener { discoverPeers() }
@@ -180,6 +184,7 @@ class MainActivity : Activity() {
         root.addView(videoSurface, LinearLayout.LayoutParams(-1, 220))
         root.addView(rootCheck)
         root.addView(shizuku)
+        root.addView(firmwareDiag)
         root.addView(discover)
         root.addView(group)
         root.addView(start)
@@ -324,6 +329,39 @@ class MainActivity : Activity() {
                 result.output.lineSequence().filter { it.isNotBlank() }.forEach { log("ROOT> $it") }
                 if (result.timedOut) log("Comando root interrotto per timeout.")
                 updateStatus(if (isRoot) "ROOT ATTIVO · UID 0" else "ROOT NON CONFERMATO")
+            }
+        }.start()
+    }
+
+
+    /**
+     * Read-only firmware inspection. Does not change permissions, packages or system files.
+     */
+    private fun runWfdFirmwareDiagnostics() {
+        updateStatus("ANALISI FIRMWARE WFD…")
+        val command = """
+            echo '=== DEVICE ==='
+            getprop ro.build.fingerprint
+            getprop ro.build.version.release
+            echo '=== APP PERMISSION ==='
+            cmd package check-permission android.permission.CONFIGURE_WIFI_DISPLAY it.peppedess.dexreceiver 0 2>&1
+            echo '=== APP PACKAGE PERMISSION STATE ==='
+            dumpsys package it.peppedess.dexreceiver 2>&1 | grep -A8 -B3 -E 'CONFIGURE_WIFI_DISPLAY|requested permissions|install permissions|runtime permissions'
+            echo '=== PERMISSION DEFINITION / HOLDERS ==='
+            dumpsys package permissions 2>&1 | grep -A14 -B4 'android.permission.CONFIGURE_WIFI_DISPLAY'
+            echo '=== WIFI / DISPLAY PACKAGES ==='
+            pm list packages -f 2>/dev/null | grep -Ei 'wifi|display|miracast' | head -80
+            echo '=== PERMISSION XML REFERENCES ==='
+            grep -R -n -A3 -B2 'CONFIGURE_WIFI_DISPLAY\|wifi_known_signers' /system/etc/permissions /system_ext/etc/permissions /product/etc/permissions /vendor/etc/permissions 2>/dev/null | head -100
+        """.trimIndent()
+        Thread {
+            val result = RootAccess.run(command, 25)
+            runOnUiThread {
+                log("===== DIAGNOSTICA FIRMWARE WFD =====")
+                result.output.lineSequence().filter { it.isNotBlank() }.forEach { log("FW> $it") }
+                if (result.timedOut) log("Diagnostica interrotta per timeout.")
+                log("===== FINE DIAGNOSTICA =====")
+                updateStatus(if (result.exitCode == 0) "DIAGNOSTICA COMPLETATA" else "DIAGNOSTICA PARZIALE · ${result.exitCode}")
             }
         }.start()
     }
