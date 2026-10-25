@@ -33,7 +33,7 @@ class RtcpPacketParserTest {
 
     @Test
     fun rejectsInvalidVersionAndTruncatedCompoundPacket() {
-        assertNull(RtcpPacketParser.parseCompound(byteArrayOf(0, 201, 0, 0)))
+        assertNull(RtcpPacketParser.parseCompound(byteArrayOf(0, 201.toByte(), 0, 0)))
         assertNull(RtcpPacketParser.parseCompound(byteArrayOf(0x80.toByte(), 201.toByte(), 0, 2, 0, 0, 0, 1)))
     }
 
