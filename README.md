@@ -16,6 +16,12 @@ Android Wi-Fi Display / Miracast receiver feasibility project.
 
 `wfd/WfdRtspParser.kt` introduces a bounded RTSP/1.0 request parser. It validates request lines, headers, content length and incomplete messages. It is intentionally not presented as a working WFD receiver: parsing RTSP is only one part of Miracast, and the Android public SDK does not provide a portable public API to register an application as a Wi-Fi Display sink.
 
+## Optional Shizuku integration
+
+The app includes the Shizuku API (12.1.0), a connection/authorization status check, and a best-effort attempt to attach WifiP2pWfdInfo to the Wi-Fi Direct group configuration on Android 11+. Shizuku itself is not root, but it must be installed and started by the user through Android Wireless debugging (Android 11+), then permission must be granted to DeX Receiver.
+
+Important: Shizuku authorization does not automatically grant the app the signature/privileged CONFIGURE_WIFI_DISPLAY permission, nor does it guarantee that the OEM Wi-Fi stack accepts the WFD information element. The current integration is a compatibility probe, not a verified privilege bypass. The app still does not implement the complete RTSP M1–M7 negotiation, RTP media receive/depacketization, or video decoding; it must not be described as a working DeX receiver yet.
+
 ## Build
 
 GitHub Actions builds the debug APK with JDK 17 and Gradle 8.9. See the Actions tab for the latest artifact.
