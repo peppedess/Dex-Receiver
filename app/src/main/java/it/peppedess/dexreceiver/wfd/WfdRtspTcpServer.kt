@@ -17,7 +17,8 @@ import java.util.concurrent.atomic.AtomicBoolean
  */
 class WfdRtspTcpServer(
     private val port: Int = 7236,
-    private val onLog: (String) -> Unit
+    private val onLog: (String) -> Unit,
+    private val sessionFactory: () -> WfdRtspSession = { WfdRtspSession() }
 ) {
     private val running = AtomicBoolean(false)
     private val lifecycleLock = Any()
@@ -93,7 +94,7 @@ class WfdRtspTcpServer(
                 socket.soTimeout = 15_000
                 val input = socket.getInputStream()
                 val output = socket.getOutputStream()
-                val session = WfdRtspSession()
+                val session = sessionFactory()
                 onLog("Client RTSP connesso: ${socket.inetAddress.hostAddress}")
                 while (running.get() && !session.isClosed()) {
                     val message = readMessage(input) ?: break
