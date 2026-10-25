@@ -99,8 +99,8 @@ class WfdRtspSessionTest {
     @Test
     fun rejectedSetParameterDoesNotPartiallyCommitPresentationUrl() {
         val session = WfdRtspSession()
-        val body = "wfd_presentation_URL: rtsp://192.168.49.1/wfd1.0/streamid=0 none\\r\\n" +
-            "wfd_audio_codecs: LPCM 00000003 00\\r\\n"
+        val body = "wfd_presentation_URL: rtsp://192.168.49.1/wfd1.0/streamid=0 none\r\n" +
+            "wfd_audio_codecs: LPCM 00000003 00\r\n"
         assertTrue(session.handle(request("SET_PARAMETER", "12", body = body)).startsWith("RTSP/1.0 451"))
         assertEquals(null, session.getPresentationUrl())
     }
