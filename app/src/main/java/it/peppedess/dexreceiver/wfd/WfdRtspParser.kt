@@ -47,6 +47,12 @@ object WfdRtspParser {
             headers[name] = line.substring(separator + 1).trim()
         }
 
+        val rawCSeq = headers.entries.firstOrNull { it.key.equals("CSeq", true) }?.value
+        if (rawCSeq != null && (rawCSeq.isEmpty() || rawCSeq.any { !it.isDigit() } ||
+                rawCSeq.toLongOrNull() == null)) {
+            return RtspParseResult.Error("Invalid RTSP CSeq")
+        }
+
         val rawLength = headers.entries.firstOrNull { it.key.equals("Content-Length", true) }?.value
         val contentLength = if (rawLength == null) 0 else rawLength.toIntOrNull()
             ?: return RtspParseResult.Error("Invalid RTSP Content-Length")
