@@ -1,6 +1,7 @@
 package it.peppedess.dexreceiver.wfd
 
 import java.io.ByteArrayOutputStream
+import java.net.InetSocketAddress
 import java.net.ServerSocket
 import java.net.Socket
 import java.net.SocketException
@@ -19,34 +20,71 @@ class WfdRtspTcpServer(
     private val onLog: (String) -> Unit
 ) {
     private val running = AtomicBoolean(false)
+    private val lifecycleLock = Any()
     private val clients = ConcurrentHashMap.newKeySet<Socket>()
     @Volatile private var workers = Executors.newCachedThreadPool()
     @Volatile private var listener: ServerSocket? = null
-    private var acceptThread: Thread? = null
+    @Volatile private var acceptThread: Thread? = null
 
-    fun start(): Boolean {
-        if (!running.compareAndSet(false, true)) return false
+    /**
+     * Bind before reporting success. This avoids the previous race where start()
+     * returned true even if the port was occupied, and where stop() could run
+     * before the accept thread had published its ServerSocket.
+     */
+    fun start(): Boolean = synchronized(lifecycleLock) {
+        if (running.get()) return false
         if (workers.isShutdown) workers = Executors.newCachedThreadPool()
-        acceptThread = Thread({
-            try {
-                val socket = ServerSocket(port)
-                listener = socket
-                onLog("RTSP in ascolto su TCP $port.")
-                while (running.get()) {
-                    val client = socket.accept()
-                    clients.add(client)
-                    workers.execute { handleClient(client) }
-                }
-            } catch (e: SocketException) {
-                if (running.get()) onLog("Socket RTSP chiuso inaspettatamente: ${e.message}")
-            } catch (e: Exception) {
-                onLog("Errore server RTSP: ${e.message}")
-            } finally {
-                running.set(false)
-                listener = null
+
+        val socket = try {
+            ServerSocket().apply {
+                reuseAddress = true
+                bind(InetSocketAddress(port))
             }
-        }, "WFD-RTSP-Accept").apply { isDaemon = true; start() }
-        return true
+        } catch (e: Exception) {
+            onLog("Impossibile aprire TCP $port: ${e.message}")
+            return false
+        }
+
+        listener = socket
+        running.set(true)
+        acceptThread = Thread({ acceptLoop(socket) }, "WFD-RTSP-Accept").apply {
+            isDaemon = true
+            start()
+        }
+        true
+    }
+
+    private fun acceptLoop(socket: ServerSocket) {
+        try {
+            onLog("RTSP in ascolto su TCP $port.")
+            while (running.get() && !socket.isClosed) {
+                val client = socket.accept()
+                if (!running.get()) {
+                    client.close()
+                    break
+                }
+                clients.add(client)
+                try {
+                    workers.execute { handleClient(client) }
+                } catch (e: Exception) {
+                    clients.remove(client)
+                    try { client.close() } catch (_: Exception) {}
+                    if (running.get()) onLog("Impossibile gestire il client RTSP: ${e.message}")
+                }
+            }
+        } catch (e: SocketException) {
+            if (running.get()) onLog("Socket RTSP chiuso inaspettatamente: ${e.message}")
+        } catch (e: Exception) {
+            if (running.get()) onLog("Errore server RTSP: ${e.message}")
+        } finally {
+            synchronized(lifecycleLock) {
+                if (listener === socket) {
+                    running.set(false)
+                    listener = null
+                    acceptThread = null
+                }
+            }
+        }
     }
 
     private fun handleClient(client: Socket) {
@@ -70,7 +108,7 @@ class WfdRtspTcpServer(
                         }
                         is RtspParseResult.Error -> {
                             onLog("Richiesta RTSP non valida: ${parsed.reason}")
-                            output.write("RTSP/1.0 400 Bad Request\r\nContent-Length: 0\r\n\r\n".toByteArray())
+                            output.write("RTSP/1.0 400 Bad Request\\r\\nContent-Length: 0\\r\\n\\r\\n".toByteArray())
                             output.flush()
                             break
                         }
@@ -102,8 +140,7 @@ class WfdRtspTcpServer(
             }
         }
         if (matched != marker.size) throw IllegalArgumentException("Header RTSP troppo grande")
-        val header = bytes.toByteArray()
-        val headerText = String(header, Charsets.ISO_8859_1)
+        val headerText = String(bytes.toByteArray(), Charsets.ISO_8859_1)
         val contentLength = Regex("(?im)^Content-Length\\s*:\\s*(\\d+)\\s*$")
             .find(headerText)?.groupValues?.get(1)?.toIntOrNull() ?: 0
         if (contentLength > 64 * 1024) throw IllegalArgumentException("Body RTSP troppo grande")
@@ -116,12 +153,15 @@ class WfdRtspTcpServer(
     }
 
     fun stop() {
-        running.set(false)
-        try { listener?.close() } catch (_: Exception) {}
-        clients.forEach { try { it.close() } catch (_: Exception) {} }
-        clients.clear()
-        workers.shutdownNow()
-        acceptThread = null
+        synchronized(lifecycleLock) {
+            running.set(false)
+            try { listener?.close() } catch (_: Exception) {}
+            listener = null
+            clients.forEach { try { it.close() } catch (_: Exception) {} }
+            clients.clear()
+            workers.shutdownNow()
+            acceptThread = null
+        }
     }
 
     fun isRunning(): Boolean = running.get()
