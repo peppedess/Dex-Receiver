@@ -246,8 +246,26 @@ class MainActivity : Activity() {
     private fun stopRtspServer() {
         rtspServer?.stop()
         rtspServer = null
-        updateStatus("SERVER FERMO")
+        stopReceiverGroup()
+        updateStatus("SERVER E RETE P2P FERMI")
         log("Server RTSP arrestato.")
+    }
+
+    private fun stopReceiverGroup() {
+        val manager = wifiP2pManager ?: return
+        val channel = p2pChannel ?: return
+        try {
+            manager.removeGroup(channel, object : WifiP2pManager.ActionListener {
+                override fun onSuccess() {
+                    log("Gruppo Wi-Fi Direct rimosso.")
+                }
+                override fun onFailure(reason: Int) {
+                    log("Rimozione gruppo P2P non riuscita. Codice: $reason")
+                }
+            })
+        } catch (e: SecurityException) {
+            log("Permesso insufficiente per rimuovere il gruppo Wi-Fi Direct.")
+        }
     }
 
     private fun updateStatus(value: String) {
