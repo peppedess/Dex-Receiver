@@ -67,15 +67,24 @@ class WfdRtspSession(
             ?: return response(400, "Bad Request", cseq)
         val unknown = parameters.keys.firstOrNull { it !in SUPPORTED_SET_PARAMETERS }
         if (unknown != null) return response(451, "Parameter Not Understood", cseq)
-        parameters["wfd_presentation_url"]?.let { value ->
-            presentationUrl = value.substringBefore(" none").trim()
+        // Validate the complete request before mutating session state. A rejected
+        // SET_PARAMETER must never leave half of an M4 negotiation committed.
+        val selectedVideo = parameters["wfd_video_formats"]
+        if (selectedVideo != null && !selectedVideo.contains("00000001")) {
+            return response(451, "Parameter Not Understood", cseq)
         }
-        parameters["wfd_video_formats"]?.let { selected ->
-            if (!selected.contains("00000001")) return response(451, "Parameter Not Understood", cseq)
+        val selectedAudio = parameters["wfd_audio_codecs"]
+        if (selectedAudio != null && !selectedAudio.equals("none", true)) {
+            return response(451, "Parameter Not Understood", cseq)
         }
-        parameters["wfd_audio_codecs"]?.let { selected ->
-            if (!selected.equals("none", true)) return response(451, "Parameter Not Understood", cseq)
+        val selectedUrl = parameters["wfd_presentation_url"]?.substringBefore(" none")?.trim()
+        if (selectedUrl != null && (!selectedUrl.startsWith("rtsp://", true) || selectedUrl.any { it.isWhitespace() })) {
+            return response(400, "Bad Request", cseq)
         }
+        if (parameters["wfd_trigger_method"]?.uppercase() !in setOf(null, "SETUP", "PLAY", "PAUSE", "TEARDOWN", "IDR")) {
+            return response(451, "Parameter Not Understood", cseq)
+        }
+        if (selectedUrl != null) presentationUrl = selectedUrl
         // M5 trigger is acknowledged; the source then opens the RTSP SETUP request.
         return response(200, "OK", cseq)
     }
@@ -93,6 +102,7 @@ class WfdRtspSession(
     }
 
     private fun handleSetup(request: RtspRequest, cseq: String): String {
+        if (setup) return response(455, "Method Not Valid in This State", cseq)
         val transport = request.headers.entries.firstOrNull { it.key.equals("Transport", true) }?.value
             ?: return response(461, "Unsupported Transport", cseq)
         if (!transport.contains("RTP/AVP/UDP", true) || !transport.contains("unicast", true)) {
@@ -102,7 +112,8 @@ class WfdRtspSession(
             ?: return response(461, "Unsupported Transport", cseq)
         val rtp = match.groupValues[1].toIntOrNull() ?: return response(461, "Unsupported Transport", cseq)
         val rtcp = match.groupValues[2].toIntOrNull() ?: (rtp + 1)
-        if (rtp !in 1..65534 || rtcp !in 1..65535 || mediaPort !in 1024..65534) {
+        if (rtp !in 1..65534 || rtcp !in 1..65535 || rtcp == rtp ||
+            mediaPort !in 1024..65534 || mediaPort == 65535) {
             return response(461, "Unsupported Transport", cseq)
         }
         if (!onStartMedia(mediaPort)) return response(500, "Internal Server Error", cseq)
