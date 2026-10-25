@@ -5,7 +5,8 @@ class WfdRtspSession(
     private val mediaPort: Int = 19000,
     private val onStartMedia: (Int) -> Boolean = { false },
     private val onStopMedia: () -> Unit = {},
-    private val onPauseMedia: () -> Unit = {}
+    private val onPauseMedia: () -> Unit = {},
+    private val onResumeMedia: () -> Unit = {}
 ) {
     private var closed = false
     private var setup = false
@@ -22,6 +23,7 @@ class WfdRtspSession(
             "SET_PARAMETER" -> handleSetParameter(request, cseq)
             "SETUP" -> handleSetup(request, cseq)
             "PLAY" -> if (!setup) response(455, "Method Not Valid in This State", cseq) else {
+                if (!playing) onResumeMedia()
                 playing = true
                 response(200, "OK", cseq, listOf("Session: $sessionId;timeout=60", "Range: npt=now-"))
             }
