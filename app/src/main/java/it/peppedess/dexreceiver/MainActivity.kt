@@ -1,8 +1,6 @@
 package it.peppedess.dexreceiver
 
-import android.Manifest
 import android.app.Activity
-import android.content.pm.PackageManager
 import android.net.wifi.p2p.WifiP2pManager
 import android.os.Build
 import android.os.Bundle
@@ -11,24 +9,21 @@ import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
-import java.net.ServerSocket
-import java.util.concurrent.Executors
+import it.peppedess.dexreceiver.wfd.WfdRtspTcpServer
 
 /**
- * DeX Receiver 0.1.1 - Android networking diagnostic prototype.
+ * DeX Receiver protocol-development build.
  *
- * The public Android SDK does not expose the Wi-Fi Display sink registration
- * methods required to advertise this app as a Miracast receiver. This build
- * deliberately does not claim to be a WFD sink.
+ * Hosts a local RTSP endpoint on TCP/7236. It is not yet a Miracast/WFD sink:
+ * no Wi-Fi Display discovery/advertisement, WFD capability negotiation,
+ * RTP media transport, or video/audio decoding is implemented.
  */
 class MainActivity : Activity() {
     private lateinit var status: TextView
     private lateinit var logView: TextView
     private var wifiP2pManager: WifiP2pManager? = null
-    @Volatile private var server: ServerSocket? = null
-    private val executor = Executors.newCachedThreadPool()
+    @Volatile private var rtspServer: WfdRtspTcpServer? = null
     private val logLines = mutableListOf<String>()
-    private val permissionRequest = 410
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -36,10 +31,10 @@ class MainActivity : Activity() {
         wifiP2pManager = getSystemService(WIFI_P2P_SERVICE) as? WifiP2pManager
         log("Dispositivo: ${Build.MANUFACTURER} ${Build.MODEL}")
         log("Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})")
-        log("Wi-Fi Direct framework: ${if (wifiP2pManager != null) "presente" else "non disponibile"}")
-        log("Nota: il normale SDK Android non espone l'API pubblica per registrare un WFD sink.")
-        updateStatus("PRONTO · TEST RETE")
-        requestNeededPermissions()
+        log("Framework Wi-Fi Direct: ${if (wifiP2pManager != null) "presente" else "assente"}")
+        log("Endpoint RTSP previsto: TCP 7236")
+        log("WFD sink/discovery e ricezione video: non ancora implementati.")
+        updateStatus("PRONTO · RTSP NON AVVIATO")
     }
 
     private fun buildUi() {
@@ -55,7 +50,7 @@ class MainActivity : Activity() {
             gravity = Gravity.CENTER
         }
         val subtitle = TextView(this).apply {
-            text = "ANDROID NETWORK DIAGNOSTIC"
+            text = "WIFI DISPLAY · RTSP PROTOCOL"
             textSize = 11f
             letterSpacing = 0.15f
             setTextColor(0xFFAAA3C5.toInt())
@@ -63,21 +58,21 @@ class MainActivity : Activity() {
             setPadding(0, 8, 0, 28)
         }
         status = TextView(this).apply {
-            textSize = 20f
+            textSize = 18f
             setTextColor(0xFFBBA5FF.toInt())
             gravity = Gravity.CENTER
             setPadding(0, 22, 0, 22)
         }
         val start = Button(this).apply {
-            text = "AVVIA TEST TCP 7236"
-            setOnClickListener { startTcpTest() }
+            text = "AVVIA SERVER RTSP · 7236"
+            setOnClickListener { startRtspServer() }
         }
         val stop = Button(this).apply {
-            text = "FERMA TEST"
-            setOnClickListener { stopTcpTest() }
+            text = "FERMA SERVER"
+            setOnClickListener { stopRtspServer() }
         }
         val note = TextView(this).apply {
-            text = "ATTENZIONE: questo test apre una porta TCP locale, ma NON pubblica il dispositivo come ricevitore Miracast e NON riceve il video DeX. Serve a verificare soltanto la rete e la connettività di base."
+            text = "STATO SVILUPPO: il server accetta connessioni RTSP e gestisce richieste di base. La negoziazione Wi‑Fi Display, SETUP/PLAY, RTP e decodifica video non sono ancora disponibili: il Galaxy non potrà ancora trasmettere DeX a questa app."
             textSize = 13f
             setTextColor(0xFFD0CCDD.toInt())
             setPadding(0, 18, 0, 18)
@@ -98,53 +93,29 @@ class MainActivity : Activity() {
         setContentView(root)
     }
 
-    private fun requestNeededPermissions() {
-        val needed = arrayOf(Manifest.permission.ACCESS_FINE_LOCATION).filter {
-            checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED
-        }
-        if (needed.isNotEmpty()) requestPermissions(needed.toTypedArray(), permissionRequest)
-    }
-
-    private fun startTcpTest() {
-        if (server != null) {
-            log("Il test TCP è già attivo.")
+    private fun startRtspServer() {
+        if (rtspServer?.isRunning() == true) {
+            log("Il server RTSP è già attivo.")
             return
         }
-        executor.execute {
-            try {
-                val listener = ServerSocket(7236)
-                server = listener
-                runOnUiThread {
-                    updateStatus("TEST TCP ATTIVO · 7236")
-                    log("Porta TCP 7236 in ascolto. Non è un endpoint Miracast completo.")
-                }
-                while (!listener.isClosed) {
-                    val client = listener.accept()
-                    executor.execute {
-                        client.use { socket ->
-                            socket.soTimeout = 5000
-                            val buffer = ByteArray(2048)
-                            val count = socket.getInputStream().read(buffer)
-                            if (count > 0) {
-                                val received = String(buffer, 0, count, Charsets.UTF_8)
-                                log("Connessione ricevuta: ${received.take(500)}")
-                                val reply = "HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nOK"
-                                socket.getOutputStream().write(reply.toByteArray(Charsets.UTF_8))
-                            }
-                        }
-                    }
-                }
-            } catch (t: Exception) {
-                if (server?.isClosed != true) log("Errore listener: ${t.message}")
-            }
+        val server = WfdRtspTcpServer(7236) { message ->
+            log(message)
+            if (message.startsWith("RTSP in ascolto")) updateStatus("RTSP ATTIVO · TCP 7236")
+            if (message.startsWith("Errore server")) updateStatus("ERRORE SERVER")
+        }
+        rtspServer = server
+        updateStatus("AVVIO SERVER RTSP…")
+        if (!server.start()) {
+            log("Il server non è stato avviato.")
+            updateStatus("AVVIO NON RIUSCITO")
         }
     }
 
-    private fun stopTcpTest() {
-        try { server?.close() } catch (_: Exception) {}
-        server = null
-        updateStatus("FERMATO")
-        log("Test TCP arrestato.")
+    private fun stopRtspServer() {
+        rtspServer?.stop()
+        rtspServer = null
+        updateStatus("SERVER FERMO")
+        log("Server RTSP arrestato.")
     }
 
     private fun updateStatus(value: String) {
@@ -154,14 +125,13 @@ class MainActivity : Activity() {
     private fun log(message: String) {
         runOnUiThread {
             logLines.add("• $message")
-            while (logLines.size > 80) logLines.removeAt(0)
+            while (logLines.size > 100) logLines.removeAt(0)
             logView.text = logLines.joinToString("\n\n")
         }
     }
 
     override fun onDestroy() {
-        stopTcpTest()
-        executor.shutdownNow()
+        stopRtspServer()
         super.onDestroy()
     }
 }
