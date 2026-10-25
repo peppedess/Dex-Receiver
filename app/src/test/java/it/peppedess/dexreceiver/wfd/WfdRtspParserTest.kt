@@ -32,6 +32,11 @@ class WfdRtspParserTest {
         assertTrue(WfdRtspParser.parse(raw) is RtspParseResult.Error)
     }
 
+    @Test fun rejectsMissingCSeq() {
+        val raw = "OPTIONS * RTSP/1.0\\r\\n\\r\\n"
+        assertTrue(WfdRtspParser.parse(raw) is RtspParseResult.Error)
+    }
+
     @Test fun rejectsNonNumericCSeq() {
         val raw = "OPTIONS * RTSP/1.0\r\nCSeq: abc\r\n\r\n"
         assertTrue(WfdRtspParser.parse(raw) is RtspParseResult.Error)
