@@ -4,7 +4,8 @@ package it.peppedess.dexreceiver.wfd
 class WfdRtspSession(
     private val mediaPort: Int = 19000,
     private val onStartMedia: (Int) -> Boolean = { false },
-    private val onStopMedia: () -> Unit = {}
+    private val onStopMedia: () -> Unit = {},
+    private val onPauseMedia: () -> Unit = {}
 ) {
     private var closed = false
     private var setup = false
@@ -22,10 +23,11 @@ class WfdRtspSession(
             "SETUP" -> handleSetup(request, cseq)
             "PLAY" -> if (!setup) response(455, "Method Not Valid in This State", cseq) else {
                 playing = true
-                response(200, "OK", cseq, listOf("Session: $sessionId;timeout=60"))
+                response(200, "OK", cseq, listOf("Session: $sessionId;timeout=60", "Range: npt=now-"))
             }
-            "PAUSE" -> if (!setup) response(455, "Method Not Valid in This State", cseq) else {
+            "PAUSE" -> if (!setup || !playing) response(455, "Method Not Valid in This State", cseq) else {
                 playing = false
+                onPauseMedia()
                 response(200, "OK", cseq, listOf("Session: $sessionId"))
             }
             "TEARDOWN" -> {
@@ -85,6 +87,18 @@ class WfdRtspSession(
             return response(451, "Parameter Not Understood", cseq)
         }
         if (selectedUrl != null) presentationUrl = selectedUrl
+        when (parameters["wfd_trigger_method"]?.uppercase()) {
+            "TEARDOWN" -> {
+                onStopMedia()
+                setup = false
+                playing = false
+                closed = true
+            }
+            "PAUSE" -> if (setup && playing) {
+                playing = false
+                onPauseMedia()
+            }
+        }
         // M5 trigger is acknowledged; the source then opens the RTSP SETUP request.
         return response(200, "OK", cseq)
     }
