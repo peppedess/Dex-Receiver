@@ -108,7 +108,7 @@ class WfdRtspTcpServer(
                         }
                         is RtspParseResult.Error -> {
                             onLog("Richiesta RTSP non valida: ${parsed.reason}")
-                            output.write("RTSP/1.0 400 Bad Request\\r\\nContent-Length: 0\\r\\n\\r\\n".toByteArray())
+                            output.write("RTSP/1.0 400 Bad Request\r\nCSeq: ${parsedSequence(message)}\r\nContent-Length: 0\r\n\r\n".toByteArray(Charsets.UTF_8))
                             output.flush()
                             break
                         }
@@ -122,6 +122,11 @@ class WfdRtspTcpServer(
             }
         }
     }
+
+
+    private fun parsedSequence(message: String): String =
+        Regex("(?im)^CSeq\\s*:\\s*([0-9]+)\\s*$")
+            .find(message)?.groupValues?.get(1) ?: "0"
 
     /** Reads exactly one RTSP message, including its declared body. */
     private fun readMessage(input: java.io.InputStream): String? {
