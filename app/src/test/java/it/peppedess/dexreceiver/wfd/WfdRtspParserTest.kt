@@ -51,4 +51,24 @@ class WfdRtspParserTest {
         val raw = "OPTIONS * RTSP/1.0\r\nCSeq: 1\r\nContent-Length: nope\r\n\r\n"
         assertTrue(WfdRtspParser.parse(raw) is RtspParseResult.Error)
     }
+    @Test fun rejectsMalformedRequestLineSpacing() {
+        val raw = "OPTIONS  * RTSP/1.0\\r\\nCSeq: 1\\r\\n\\r\\n"
+        assertTrue(WfdRtspParser.parse(raw) is RtspParseResult.Error)
+    }
+
+    @Test fun rejectsInvalidMethodToken() {
+        val raw = "OP(TIONS * RTSP/1.0\\r\\nCSeq: 1\\r\\n\\r\\n"
+        assertTrue(WfdRtspParser.parse(raw) is RtspParseResult.Error)
+    }
+
+    @Test fun rejectsInvalidHeaderName() {
+        val raw = "OPTIONS * RTSP/1.0\\r\\nBad Header: x\\r\\nCSeq: 1\\r\\n\\r\\n"
+        assertTrue(WfdRtspParser.parse(raw) is RtspParseResult.Error)
+    }
+
+    @Test fun rejectsNonAsciiCSeqDigits() {
+        val raw = "OPTIONS * RTSP/1.0\\r\\nCSeq: １２\\r\\n\\r\\n"
+        assertTrue(WfdRtspParser.parse(raw) is RtspParseResult.Error)
+    }
+
 }
