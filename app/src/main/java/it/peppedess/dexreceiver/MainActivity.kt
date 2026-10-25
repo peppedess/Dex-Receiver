@@ -38,6 +38,8 @@ class MainActivity : Activity() {
                 log("Wi-Fi Direct: ${if (enabled) "abilitato" else "disabilitato"}")
             } else if (intent.action == WifiP2pManager.WIFI_P2P_PEERS_CHANGED_ACTION) {
                 requestPeerList()
+            } else if (intent.action == WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION) {
+                handleP2pConnectionChange()
             } else if (intent.action == WifiP2pManager.WIFI_P2P_DISCOVERY_CHANGED_ACTION) {
                 val state = intent.getIntExtra(WifiP2pManager.EXTRA_DISCOVERY_STATE, -1)
                 log("Discovery P2P: ${if (state == WifiP2pManager.WIFI_P2P_DISCOVERY_STARTED) "avviata" else "terminata"}")
@@ -68,6 +70,7 @@ class MainActivity : Activity() {
             val filter = IntentFilter().apply {
                 addAction(WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION)
                 addAction(WifiP2pManager.WIFI_P2P_PEERS_CHANGED_ACTION)
+                addAction(WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION)
                 addAction(WifiP2pManager.WIFI_P2P_DISCOVERY_CHANGED_ACTION)
             }
             registerReceiver(p2pReceiver, filter)
@@ -174,6 +177,24 @@ class MainActivity : Activity() {
         })
     }
 
+    private fun handleP2pConnectionChange() {
+        val manager = wifiP2pManager ?: return
+        val channel = p2pChannel ?: return
+        try {
+            manager.requestConnectionInfo(channel) { info ->
+                if (info.groupFormed) {
+                    log("Connessione Wi-Fi Direct stabilita · Group Owner: ${info.isGroupOwner}")
+                    log("Indirizzo Group Owner: ${info.groupOwnerAddress?.hostAddress ?: "non disponibile"}")
+                    if (info.isGroupOwner) startRtspServer()
+                    updateStatus(if (info.isGroupOwner) "GRUPPO RICEVITORE ATTIVO" else "COLLEGATO AL GRUPPO P2P")
+                } else {
+                    log("Nessun gruppo Wi-Fi Direct attivo.")
+                }
+            }
+        } catch (e: SecurityException) {
+            log("Permesso insufficiente per leggere lo stato della connessione P2P.")
+        }
+    }
     private fun requestPeerList() {
         val manager = wifiP2pManager ?: return
         val channel = p2pChannel ?: return
