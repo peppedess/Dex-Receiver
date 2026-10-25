@@ -1,13 +1,16 @@
 package it.peppedess.dexreceiver.wfd
 
-/** MPEG-2 Transport Stream packet framing (188-byte packets). */
+/**
+ * MPEG-TS packet framing (188-byte packets).
+ */
 data class MpegTsPacket(
     val pid: Int,
     val payloadUnitStart: Boolean,
     val continuityCounter: Int,
     val hasPayload: Boolean,
     val hasAdaptationField: Boolean,
-    val payload: ByteArray
+    val payload: ByteArray,
+    val discontinuity: Boolean = false
 )
 
 object MpegTsPacketParser {
@@ -18,15 +21,20 @@ object MpegTsPacketParser {
         val b1 = packet[1].toInt() and 0xff
         val b2 = packet[2].toInt() and 0xff
         val b3 = packet[3].toInt() and 0xff
-        if ((b1 and 0x80) != 0) return null // transport_error_indicator
+        if ((b1 and 0x80) != 0) return null
         val adaptationControl = (b3 ushr 4) and 0x03
         if (adaptationControl == 0) return null
         val hasAdaptation = adaptationControl == 2 || adaptationControl == 3
         val hasPayload = adaptationControl == 1 || adaptationControl == 3
         var offset = 4
+        var discontinuity = false
         if (hasAdaptation) {
             if (offset >= packet.size) return null
             val adaptationLength = packet[offset].toInt() and 0xff
+            if (adaptationLength > 0) {
+                if (offset + adaptationLength >= packet.size) return null
+                discontinuity = (packet[offset + 1].toInt() and 0x80) != 0
+            }
             offset += 1 + adaptationLength
             if (offset > packet.size) return null
         }
@@ -37,11 +45,11 @@ object MpegTsPacketParser {
             continuityCounter = b3 and 0x0f,
             hasPayload = hasPayload,
             hasAdaptationField = hasAdaptation,
-            payload = if (hasPayload) packet.copyOfRange(offset, packet.size) else ByteArray(0)
+            payload = if (hasPayload) packet.copyOfRange(offset, packet.size) else ByteArray(0),
+            discontinuity = discontinuity
         )
     }
 
-    /** Splits aligned 188-byte TS packets; invalid sync bytes reject the whole payload. */
     fun split(payload: ByteArray): List<MpegTsPacket>? {
         if (payload.isEmpty() || payload.size % PACKET_SIZE != 0) return null
         val result = ArrayList<MpegTsPacket>(payload.size / PACKET_SIZE)
