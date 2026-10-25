@@ -18,6 +18,7 @@ class WfdMediaTransport(
         onVideoDiscontinuity = assembler::discardPartial
     )
     private var receiver: UdpRtpReceiver? = null
+    @Volatile private var paused = true
     private val reorderBuffer = RtpReorderBuffer(
         maxBufferedPackets = 32,
         onPacket = ::consumeOrderedRtp,
@@ -34,7 +35,8 @@ class WfdMediaTransport(
         )
         if (!next.start()) return false
         receiver = next
-        onLog("Trasporto WFD UDP/RTP pronto sulla porta $rtpPort.")
+        paused = true
+        onLog("Trasporto WFD UDP/RTP pronto sulla porta $rtpPort (in attesa di PLAY).")
         return true
     }
 
@@ -42,6 +44,7 @@ class WfdMediaTransport(
     fun stop() {
         receiver?.stop()
         receiver = null
+        paused = true
         reorderBuffer.reset()
         demuxer.flush()
         assembler.flush()
@@ -52,7 +55,20 @@ class WfdMediaTransport(
 
     fun isRunning(): Boolean = receiver?.isRunning() == true
 
+    fun pause() {
+        paused = true
+        onLog("Flusso RTP in pausa.")
+    }
+
+    fun resume() {
+        if (isRunning()) {
+            paused = false
+            onLog("Flusso RTP ripreso.")
+        }
+    }
+
     private fun consumeOrderedRtp(rtp: RtpPacket) {
+        if (paused) return
         val packets = MpegTsPacketParser.split(rtp.payload)
         if (packets == null) {
             onLog("Payload RTP non allineato a pacchetti MPEG-TS da 188 byte.")
