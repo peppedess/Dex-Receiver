@@ -29,7 +29,7 @@ object RtcpPacketParser {
             var payloadEnd = offset + packetLength
             if (padded) {
                 val padding = datagram[payloadEnd - 1].toInt() and 0xff
-                if (padding == 0 || padding > packetLength - 4 || padding % 4 != 0) return null
+                if (padding == 0 || padding > packetLength - 4) return null
                 payloadEnd -= padding
             }
             val payloadLength = payloadEnd - offset - 4
