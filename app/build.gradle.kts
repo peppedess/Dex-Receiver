@@ -19,5 +19,6 @@ android {
     kotlinOptions { jvmTarget = "17" }
 }
 dependencies {
+    implementation("dev.rikka.shizuku:api:12.1.0")
     testImplementation("junit:junit:4.13.2")
 }
