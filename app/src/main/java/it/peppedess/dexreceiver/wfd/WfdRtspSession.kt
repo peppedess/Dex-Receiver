@@ -8,21 +8,19 @@ package it.peppedess.dexreceiver.wfd
  * Wi-Fi Display profile and a media transport implementation.
  */
 class WfdRtspSession {
-    private var lastCSeq: String? = null
     private var closed = false
 
     fun handle(request: RtspRequest): String {
         if (closed) return response(454, "Session Not Found", request.cSeq)
         val cseq = request.cSeq
         if (cseq.isNullOrBlank()) return response(400, "Bad Request", null)
-        lastCSeq = cseq
 
         return when (request.method.uppercase()) {
             "OPTIONS" -> response(
                 200,
                 "OK",
                 cseq,
-                extraHeaders = listOf("Public: OPTIONS, GET_PARAMETER, SET_PARAMETER, TEARDOWN")
+                extraHeaders = listOf("Public: OPTIONS, GET_PARAMETER, TEARDOWN")
             )
             "GET_PARAMETER" -> response(200, "OK", cseq)
             "SET_PARAMETER" -> {
