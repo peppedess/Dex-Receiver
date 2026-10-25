@@ -9,8 +9,8 @@ android {
         applicationId = "it.peppedess.dexreceiver"
         minSdk = 29
         targetSdk = 32
-        versionCode = 1
-        versionName = "0.1-prototype"
+        versionCode = 2
+        versionName = "0.2-protocol-foundation"
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
