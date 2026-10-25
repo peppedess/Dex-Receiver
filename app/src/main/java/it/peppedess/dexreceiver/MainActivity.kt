@@ -8,6 +8,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.net.wifi.p2p.WifiP2pManager
+import android.net.wifi.p2p.WifiP2pConfig
 import android.os.Build
 import android.os.Bundle
 import android.view.Gravity
@@ -16,6 +17,7 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import it.peppedess.dexreceiver.wfd.WfdRtspTcpServer
+import rikka.shizuku.Shizuku
 
 /**
  * DeX Receiver protocol-development build.
@@ -29,6 +31,15 @@ class MainActivity : Activity() {
     private var receiverRegistered = false
     @Volatile private var rtspServer: WfdRtspTcpServer? = null
     private val logLines = mutableListOf<String>()
+    private val shizukuRequestCode = 7206
+    private val shizukuBinderReceived = Shizuku.OnBinderReceivedListener { refreshShizukuStatus() }
+    private val shizukuBinderDead = Shizuku.OnBinderDeadListener { log("Shizuku non è più attivo.") }
+    private val shizukuPermissionResult = Shizuku.OnRequestPermissionResultListener { requestCode, grantResult ->
+        if (requestCode == shizukuRequestCode) {
+            log(if (grantResult == PackageManager.PERMISSION_GRANTED) "Permesso Shizuku concesso." else "Permesso Shizuku negato.")
+            refreshShizukuStatus()
+        }
+    }
 
     private val p2pReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -50,6 +61,10 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         buildUi()
+        Shizuku.addBinderReceivedListener(shizukuBinderReceived)
+        Shizuku.addBinderDeadListener(shizukuBinderDead)
+        Shizuku.addRequestPermissionResultListener(shizukuPermissionResult)
+        refreshShizukuStatus()
         wifiP2pManager = getSystemService(WIFI_P2P_SERVICE) as? WifiP2pManager
         log("Dispositivo: ${Build.MANUFACTURER} ${Build.MODEL}")
         log("Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})")
@@ -112,6 +127,10 @@ class MainActivity : Activity() {
             gravity = Gravity.CENTER
             setPadding(0, 18, 0, 18)
         }
+        val shizuku = Button(this).apply {
+            text = "COLLEGA SHIZUKU"
+            setOnClickListener { connectShizuku() }
+        }
         val discover = Button(this).apply {
             text = "CERCA DISPOSITIVI WI-FI DIRECT"
             setOnClickListener { discoverPeers() }
@@ -143,6 +162,7 @@ class MainActivity : Activity() {
         root.addView(title)
         root.addView(subtitle)
         root.addView(status)
+        root.addView(shizuku)
         root.addView(discover)
         root.addView(group)
         root.addView(start)
@@ -227,7 +247,8 @@ class MainActivity : Activity() {
             return
         }
         updateStatus("CREAZIONE RETE WI-FI DIRECT…")
-        manager.createGroup(channel, object : WifiP2pManager.ActionListener {
+        val groupConfig = buildWfdGroupConfig()
+        manager.createGroup(channel, groupConfig, object : WifiP2pManager.ActionListener {
             override fun onSuccess() {
                 log("Gruppo Wi-Fi Direct creato. Il dispositivo dovrebbe essere Group Owner.")
                 manager.requestConnectionInfo(channel) { info ->
@@ -251,6 +272,53 @@ class MainActivity : Activity() {
                 updateStatus("RETE WI-FI DIRECT NON CREATA")
             }
         })
+    }
+    private fun refreshShizukuStatus() {
+        try {
+            val running = Shizuku.pingBinder()
+            val granted = running && Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED
+            log("Shizuku: " + if (!running) "non attivo" else if (granted) "collegato e autorizzato" else "attivo, autorizzazione da concedere")
+        } catch (t: Throwable) {
+            log("Shizuku non disponibile: " + t.javaClass.simpleName)
+        }
+    }
+
+    private fun connectShizuku() {
+        try {
+            if (!Shizuku.pingBinder()) {
+                log("Avvia Shizuku tramite Debug wireless, poi torna qui.")
+                return
+            }
+            if (Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED) {
+                log("Shizuku già autorizzato.")
+            } else {
+                Shizuku.requestPermission(shizukuRequestCode)
+            }
+        } catch (t: Throwable) {
+            log("Connessione Shizuku non riuscita: " + (t.message ?: t.javaClass.simpleName))
+        }
+    }
+
+    private fun buildWfdGroupConfig(): WifiP2pConfig {
+        val config = WifiP2pConfig()
+        config.groupOwnerIntent = 15
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            try {
+                val infoClass = Class.forName("android.net.wifi.p2p.WifiP2pWfdInfo")
+                val info = infoClass.getDeclaredConstructor().newInstance()
+                infoClass.getMethod("setEnabled", Boolean::class.javaPrimitiveType).invoke(info, true)
+                infoClass.getMethod("setDeviceType", Int::class.javaPrimitiveType).invoke(info, 1)
+                infoClass.getMethod("setSessionAvailable", Boolean::class.javaPrimitiveType).invoke(info, true)
+                infoClass.getMethod("setControlPort", Int::class.javaPrimitiveType).invoke(info, 7236)
+                config.javaClass.getMethod("setWfdInfo", infoClass).invoke(config, info)
+                log("WFD info allegato alla configurazione P2P (tentativo best-effort).")
+            } catch (t: Throwable) {
+                log("setWfdInfo bloccato dal firmware: " + (t.cause?.message ?: t.message ?: t.javaClass.simpleName))
+            }
+        } else {
+            log("WifiP2pWfdInfo non disponibile su questa versione Android.")
+        }
+        return config
     }
     private fun startRtspServer() {
         if (rtspServer?.isRunning() == true) {
@@ -308,6 +376,9 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
+        Shizuku.removeBinderReceivedListener(shizukuBinderReceived)
+        Shizuku.removeBinderDeadListener(shizukuBinderDead)
+        Shizuku.removeRequestPermissionResultListener(shizukuPermissionResult)
         stopRtspServer()
         super.onDestroy()
     }
