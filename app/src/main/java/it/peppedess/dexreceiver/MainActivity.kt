@@ -9,6 +9,7 @@ import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.net.wifi.p2p.WifiP2pManager
 import android.net.wifi.p2p.WifiP2pConfig
+import android.net.wifi.p2p.WifiP2pWfdInfo
 import android.os.Build
 import android.os.Bundle
 import android.view.Gravity
@@ -263,6 +264,30 @@ class MainActivity : Activity() {
             return
         }
         updateStatus("CREAZIONE RETE WI-FI DIRECT…")
+        // Ask the Android Wi-Fi framework to advertise this device as a WFD primary sink.
+        if (Build.VERSION.SDK_INT >= 34) {
+            try {
+                val wfdInfo = WifiP2pWfdInfo().apply {
+                    setEnabled(true)
+                    setDeviceType(WifiP2pWfdInfo.DEVICE_TYPE_PRIMARY_SINK)
+                    setSessionAvailable(true)
+                    setControlPort(7236)
+                    setMaxThroughput(50)
+                }
+                manager.setWfdInfo(channel, wfdInfo, object : WifiP2pManager.ActionListener {
+                    override fun onSuccess() { log("Framework WFD configured as PRIMARY_SINK on RTSP 7236.") }
+                    override fun onFailure(reason: Int) { log("setWfdInfo rejected ($reason); CONFIGURE_WIFI_DISPLAY may be unavailable.") }
+                })
+                manager.startListening(channel, object : WifiP2pManager.ActionListener {
+                    override fun onSuccess() { log("Wi-Fi Direct LISTEN request accepted.") }
+                    override fun onFailure(reason: Int) { log("startListening failed ($reason).") }
+                })
+            } catch (e: SecurityException) {
+                log("WFD advertisement blocked: CONFIGURE_WIFI_DISPLAY is signature/privileged; root/Shizuku do not grant it.")
+            } catch (t: Throwable) {
+                log("WFD advertisement error: " + t.javaClass.simpleName + ": " + t.message)
+            }
+        }
         val groupConfig = buildWfdGroupConfig()
         manager.createGroup(channel, groupConfig, object : WifiP2pManager.ActionListener {
             override fun onSuccess() {
