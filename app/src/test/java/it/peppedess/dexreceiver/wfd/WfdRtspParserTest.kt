@@ -33,7 +33,7 @@ class WfdRtspParserTest {
     }
 
     @Test fun rejectsMissingCSeq() {
-        val raw = "OPTIONS * RTSP/1.0\\r\\n\\r\\n"
+        val raw = "OPTIONS * RTSP/1.0\r\n\r\n"
         assertTrue(WfdRtspParser.parse(raw) is RtspParseResult.Error)
     }
 
