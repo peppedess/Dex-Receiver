@@ -1,41 +1,82 @@
 package it.peppedess.dexreceiver.wfd
 
+import java.io.ByteArrayOutputStream
+
 /**
- * Small MPEG-TS demuxer for the common Miracast MPEG-2 TS transport.
- * Discovers the H.264 elementary PID through PAT/PMT and emits PES payloads.
- * It deliberately rejects malformed sections instead of guessing stream IDs.
+ * MPEG-TS demuxer with per-PID continuity tracking. Damaged PSI/PES fragments
+ * are discarded and video continuation is ignored until the next PES start.
  */
 class MpegTsDemuxer(
     private val onVideoPes: (ByteArray) -> Unit,
-    private val onLog: (String) -> Unit = {}
+    private val onLog: (String) -> Unit = {},
+    private val onVideoDiscontinuity: () -> Unit = {}
 ) {
     private var pmtPid: Int? = null
     private var videoPid: Int? = null
-    private var continuity: Int? = null
-    private val sectionBuffers = HashMap<Int, java.io.ByteArrayOutputStream>()
-    private val pesBuffer = java.io.ByteArrayOutputStream()
+    private val lastContinuityByPid = HashMap<Int, Int>()
+    private val sectionBuffers = HashMap<Int, ByteArrayOutputStream>()
+    private val pesBuffer = ByteArrayOutputStream()
+    private var awaitingVideoStart = true
 
     fun reset() {
         pmtPid = null
         videoPid = null
-        continuity = null
+        lastContinuityByPid.clear()
         sectionBuffers.clear()
         pesBuffer.reset()
+        awaitingVideoStart = true
+    }
+
+    /** Drops in-flight video data after transport framing loss, preserving PAT/PMT. */
+    fun resetVideoStream() {
+        pesBuffer.reset()
+        awaitingVideoStart = true
+        onVideoDiscontinuity()
     }
 
     fun consume(packet: MpegTsPacket) {
+        if (packet.discontinuity) {
+            lastContinuityByPid.remove(packet.pid)
+            discardPidState(packet.pid)
+        }
         if (!packet.hasPayload || packet.payload.isEmpty()) return
+
+        val previous = lastContinuityByPid[packet.pid]
+        if (previous != null) {
+            val expected = (previous + 1) and 0x0f
+            if (packet.continuityCounter == previous) {
+                onLog("Pacchetto MPEG-TS duplicato ignorato sul PID ${packet.pid}.")
+                return
+            }
+            if (packet.continuityCounter != expected) {
+                onLog("Discontinuità MPEG-TS sul PID ${packet.pid}: atteso $expected, ricevuto ${packet.continuityCounter}.")
+                discardPidState(packet.pid)
+            }
+        }
+        lastContinuityByPid[packet.pid] = packet.continuityCounter
+
         if (packet.pid == 0 || packet.pid == pmtPid) {
             consumePsi(packet.pid, packet.payloadUnitStart, packet.payload)
         } else if (packet.pid == videoPid) {
+            if (awaitingVideoStart && !packet.payloadUnitStart) return
+            if (packet.payloadUnitStart) awaitingVideoStart = false
             consumePes(packet.payloadUnitStart, packet.payload)
         }
     }
 
     fun flush() {
-        if (pesBuffer.size() > 0) {
+        if (pesBuffer.size() > 0 && !awaitingVideoStart) {
             onVideoPes(pesBuffer.toByteArray())
             pesBuffer.reset()
+        }
+    }
+
+    private fun discardPidState(pid: Int) {
+        sectionBuffers.remove(pid)
+        if (pid == videoPid) {
+            pesBuffer.reset()
+            awaitingVideoStart = true
+            onVideoDiscontinuity()
         }
     }
 
@@ -48,7 +89,7 @@ class MpegTsDemuxer(
             if (offset > data.size) return
             sectionBuffers.remove(pid)
         }
-        val buffer = sectionBuffers.getOrPut(pid) { java.io.ByteArrayOutputStream() }
+        val buffer = sectionBuffers.getOrPut(pid) { ByteArrayOutputStream() }
         buffer.write(data, offset, data.size - offset)
         val bytes = buffer.toByteArray()
         if (bytes.size < 3) return
@@ -91,6 +132,7 @@ class MpegTsDemuxer(
             if (streamType == 0x1b) {
                 if (videoPid != pid) onLog("Traccia H.264 individuata sul PID $pid.")
                 videoPid = pid
+                awaitingVideoStart = true
                 return
             }
             i += 5 + infoLength
@@ -101,14 +143,15 @@ class MpegTsDemuxer(
     private fun consumePes(start: Boolean, data: ByteArray) {
         if (start) {
             flush()
-            if (data.size < 9 || (data[0].toInt() and 0xff) != 0 || (data[1].toInt() and 0xff) != 0 || (data[2].toInt() and 0xff) != 1) {
+            if (data.size < 9 || data[0].toInt() != 0 || data[1].toInt() != 0 || (data[2].toInt() and 0xff) != 1) {
                 onLog("Header PES video non valido.")
+                awaitingVideoStart = true
                 return
             }
-            val headerLength = data[8].toInt() and 0xff
-            val payloadOffset = 9 + headerLength
+            val payloadOffset = 9 + (data[8].toInt() and 0xff)
             if (payloadOffset > data.size) {
                 onLog("Header PES video incompleto.")
+                awaitingVideoStart = true
                 return
             }
             pesBuffer.write(data, payloadOffset, data.size - payloadOffset)
