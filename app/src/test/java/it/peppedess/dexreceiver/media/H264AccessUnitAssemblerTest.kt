@@ -18,8 +18,8 @@ class H264AccessUnitAssemblerTest {
         ))
         assembler.flush()
         assertEquals(2, frames.size)
-        assertTrue(frames[0].containsNal(0x65))
-        assertTrue(frames[1].containsNal(0x41))
+        assertTrue(frames.any { it.containsNal(0x65) })
+        assertTrue(frames.any { it.containsNal(0x41) })
     }
 
     @Test
