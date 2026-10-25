@@ -52,6 +52,12 @@ class MainActivity : Activity() {
         log("Dispositivo: ${Build.MANUFACTURER} ${Build.MODEL}")
         log("Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})")
         log("Framework Wi-Fi Direct: ${if (wifiP2pManager != null) "presente" else "assente"}")
+        if (Build.VERSION.SDK_INT < 34) {
+            log("API pubblica per pubblicizzare un WFD sink: assente su Android API ${Build.VERSION.SDK_INT}.")
+        } else {
+            val configureWfd = checkSelfPermission("android.permission.CONFIGURE_WIFI_DISPLAY") == PackageManager.PERMISSION_GRANTED
+            log("Permesso privilegiato CONFIGURE_WIFI_DISPLAY: ${if (configureWfd) "concesso" else "non disponibile"}")
+        }
         log("RTSP locale: TCP 7236 · WFD sink non ancora implementato")
         updateStatus("PRONTO · DIAGNOSTICA P2P")
     }
