@@ -1,16 +1,21 @@
 package it.peppedess.dexreceiver.wfd
 
+import it.peppedess.dexreceiver.media.H264AccessUnitAssembler
+
 /**
- * Connects UDP/RTP reception to MPEG-TS framing and PAT/PMT/PES demuxing.
- * Emits H.264 PES elementary payloads; access-unit parsing is still required
- * before those bytes can safely be queued into MediaCodec.
+ * UDP/RTP -> MPEG-TS -> PAT/PMT -> H.264 PES -> Annex-B access units.
+ * The caller can feed emitted access units directly to H264SurfaceDecoder.
  */
 class WfdMediaTransport(
     private val rtpPort: Int,
-    private val onH264Pes: (ByteArray) -> Unit,
+    private val onH264AccessUnit: (ByteArray) -> Unit,
     private val onLog: (String) -> Unit = {}
 ) {
-    private val demuxer = MpegTsDemuxer(onH264Pes) { onLog(it) }
+    private val assembler = H264AccessUnitAssembler(onH264AccessUnit, onLog)
+    private val demuxer = MpegTsDemuxer(
+        onVideoPes = assembler::consume,
+        onLog = onLog
+    )
     private var receiver: UdpRtpReceiver? = null
 
     @Synchronized
@@ -39,7 +44,9 @@ class WfdMediaTransport(
         receiver?.stop()
         receiver = null
         demuxer.flush()
+        assembler.flush()
         demuxer.reset()
+        assembler.reset()
         onLog("Trasporto WFD UDP/RTP arrestato.")
     }
 
