@@ -46,7 +46,6 @@ class WfdRtspSession(
     private fun handleGetParameter(request: RtspRequest, cseq: String): String {
         val requested = request.body.lineSequence().map { it.trim() }
             .filter { it.isNotEmpty() }.map { it.substringBefore(":").trim().lowercase() }.toSet()
-        if (requested.isEmpty()) return response(200, "OK", cseq)
         val values = linkedMapOf(
             "wfd_video_formats" to "wfd_video_formats: $VIDEO_FORMAT",
             "wfd_audio_codecs" to "wfd_audio_codecs: none",
@@ -60,9 +59,10 @@ class WfdRtspSession(
             "wfd_connector_type" to "wfd_connector_type: 05",
             "wfd_idr_request_capability" to "wfd_idr_request_capability: 1"
         )
-        val unknown = requested.filterNot { it in values }
+        val effectiveRequested = if (requested.isEmpty()) values.keys else requested
+        val unknown = effectiveRequested.filterNot { it in values }
         if (unknown.isNotEmpty()) return response(451, "Parameter Not Understood", cseq)
-        val body = requested.mapNotNull(values::get).joinToString("\r\n", postfix = "\r\n")
+        val body = effectiveRequested.mapNotNull(values::get).joinToString("\r\n", postfix = "\r\n")
         return response(200, "OK", cseq, body = body)
     }
 
