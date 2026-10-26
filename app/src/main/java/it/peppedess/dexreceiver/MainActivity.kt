@@ -8,7 +8,6 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.net.wifi.p2p.WifiP2pManager
-import android.net.wifi.p2p.WifiP2pConfig
 import android.net.wifi.p2p.WifiP2pWfdInfo
 import android.os.Build
 import android.os.Bundle
@@ -159,7 +158,7 @@ class MainActivity : Activity() {
             setOnClickListener { startRtspSinkClient() }
         }
         val group = Button(this).apply {
-            text = "CREA RETE WI-FI DIRECT"
+            text = "ATTENDI CONNESSIONE WI-FI DIRECT"
             setOnClickListener { createReceiverGroup() }
         }
         val stop = Button(this).apply {
@@ -401,27 +400,6 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun buildWfdGroupConfig(): WifiP2pConfig {
-        val config = WifiP2pConfig()
-        config.groupOwnerIntent = 15
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            try {
-                val infoClass = Class.forName("android.net.wifi.p2p.WifiP2pWfdInfo")
-                val info = infoClass.getDeclaredConstructor().newInstance()
-                infoClass.getMethod("setEnabled", Boolean::class.javaPrimitiveType).invoke(info, true)
-                infoClass.getMethod("setDeviceType", Int::class.javaPrimitiveType).invoke(info, 1)
-                infoClass.getMethod("setSessionAvailable", Boolean::class.javaPrimitiveType).invoke(info, true)
-                infoClass.getMethod("setControlPort", Int::class.javaPrimitiveType).invoke(info, 7236)
-                config.javaClass.getMethod("setWfdInfo", infoClass).invoke(config, info)
-                log("WFD info allegato alla configurazione P2P (tentativo best-effort).")
-            } catch (t: Throwable) {
-                log("setWfdInfo bloccato dal firmware: " + (t.cause?.message ?: t.message ?: t.javaClass.simpleName))
-            }
-        } else {
-            log("WifiP2pWfdInfo non disponibile su questa versione Android.")
-        }
-        return config
-    }
     private fun startRtspSinkClient(sourceAddress: String? = rtspSourceAddress) {
         if (rtspSinkClient?.isRunning() == true) {
             log("Il client RTSP sink è già connesso.")
