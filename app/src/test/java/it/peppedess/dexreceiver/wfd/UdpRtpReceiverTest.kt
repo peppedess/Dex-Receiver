@@ -11,25 +11,40 @@ import java.util.concurrent.TimeUnit
 
 class UdpRtpReceiverTest {
     @Test fun bindsUdpPortAndDeliversParsedRtpPacket() {
-        val port = DatagramSocket(0).use { it.localPort }
         val received = CountDownLatch(1)
         var parsed: RtpPacket? = null
-        val receiver = UdpRtpReceiver(port, onPacket = { parsed = it; received.countDown() })
+        val receiver = UdpRtpReceiver(0, onPacket = {
+            parsed = it
+            received.countDown()
+        })
         try {
             assertTrue("RTP receiver should bind", receiver.start())
+            val boundPort = receiver.localPort()
+            assertTrue("RTP receiver should expose its assigned UDP port", boundPort in 1..65535)
+
             val bytes = byteArrayOf(
                 0x80.toByte(), 0xE0.toByte(), 0x00, 0x2A,
                 0x00, 0x00, 0x00, 0x01, 0x01, 0x02, 0x03, 0x04,
                 0x65.toByte(), 0x88.toByte(), 0x84.toByte()
             )
             DatagramSocket().use { sender ->
-                sender.send(DatagramPacket(bytes, bytes.size, InetAddress.getLoopbackAddress(), port))
+                sender.send(
+                    DatagramPacket(
+                        bytes,
+                        bytes.size,
+                        InetAddress.getLoopbackAddress(),
+                        boundPort
+                    )
+                )
             }
-            assertTrue("RTP datagram should be delivered", received.await(2, TimeUnit.SECONDS))
-            assertEquals(42, parsed?.sequenceNumber)
-            assertEquals(96, parsed?.payloadType)
-            assertEquals(0x01020304L, parsed?.ssrc)
-            assertTrue(parsed?.marker == true)
+
+            assertTrue("RTP datagram should be delivered", received.await(3, TimeUnit.SECONDS))
+            val packet = requireNotNull(parsed) { "Receiver callback returned no parsed RTP packet" }
+            assertEquals(42, packet.sequenceNumber)
+            assertEquals(96, packet.payloadType)
+            assertEquals(0x01020304L, packet.ssrc)
+            assertTrue(packet.marker)
+            assertEquals(3, packet.payload.size)
         } finally {
             receiver.stop()
         }
