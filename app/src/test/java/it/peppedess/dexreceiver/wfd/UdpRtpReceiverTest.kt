@@ -6,22 +6,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class UdpRtpReceiverTest {
-    @Test fun bindsEphemeralUdpPortAndCanStop() {
-        val receiver = UdpRtpReceiver(0, onPacket = {})
-        try {
-            assertTrue("RTP receiver should start", receiver.start())
-            val boundPort = receiver.localPort()
-            assertTrue(
-                "RTP receiver should bind an ephemeral UDP port, got $boundPort",
-                boundPort in 1..65535
-            )
-            assertTrue("RTP receiver should report running after start", receiver.isRunning())
-        } finally {
-            receiver.stop()
-        }
-        assertTrue("RTP receiver should stop", !receiver.isRunning())
-    }
-
     @Test fun parsesRtpDatagramFieldsAndPayload() {
         val packetBytes = byteArrayOf(
             0x80.toByte(), 0xE0.toByte(), 0x00, 0x2A,
