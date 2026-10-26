@@ -145,13 +145,14 @@ class WfdRtspSinkClient(
             "wfd_connector_type" to "wfd_connector_type: 05",
             "wfd_idr_request_capability" to "wfd_idr_request_capability: 1"
         )
-        val unknown = requested - capabilities.keys
+        val effectiveRequested = if (requested.isEmpty()) capabilities.keys else requested
+        val unknown = effectiveRequested - capabilities.keys
         if (unknown.isNotEmpty()) {
             writeResponse(output, 451, "Parameter Not Understood", message.cseq)
             onLog("M3 contiene parametri WFD non supportati: ${unknown.joinToString()}.")
             return
         }
-        val body = requested.mapNotNull(capabilities::get).joinToString("\r\n", postfix = if (requested.isEmpty()) "" else "\r\n")
+        val body = effectiveRequested.mapNotNull(capabilities::get).joinToString("\r\n", postfix = "\r\n")
         writeResponse(output, 200, "OK", message.cseq,
             listOf("Content-Type: text/parameters"), body)
         m3Answered = true
