@@ -139,7 +139,6 @@ class WfdRtspSessionTest {
         assertTrue(session.handle(request("SET_PARAMETER", "17", body = exact)).startsWith("RTSP/1.0 200"))
     }
 
-}
 
     @Test
     fun emptyGetParameterReturnsCompleteWfdCapabilitySet() {
@@ -153,3 +152,4 @@ class WfdRtspSessionTest {
         val body = response.substringAfter("\r\n\r\n")
         assertEquals(declared, body.toByteArray(Charsets.UTF_8).size)
     }
+}
