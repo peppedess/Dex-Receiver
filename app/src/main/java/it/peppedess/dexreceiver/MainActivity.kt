@@ -424,7 +424,8 @@ class MainActivity : Activity() {
                 if (message.startsWith("RTSP sink connesso")) updateStatus("RTSP CLIENT CONNESSO · M1/M2")
                 if (message.startsWith("M4 capability")) updateStatus("WFD CAPABILITIES NEGOZIATE")
                 if (message.startsWith("M6 SETUP")) updateStatus("RTP PREPARATO · IN ATTESA PLAY")
-                if (message.startsWith("M7 PLAY")) updateStatus("RICEZIONE VIDEO ATTIVA")
+                if (message.startsWith("M7 PLAY")) updateStatus("PLAY · IN ATTESA PACCHETTI RTP")
+                if (message.startsWith("Primo RTP ricevuto")) updateStatus("RTP RICEVUTO · UDP ATTIVA")
                 if (message.startsWith("Connessione RTSP sink terminata")) updateStatus("RTSP DISCONNESSO")
             }
         )
