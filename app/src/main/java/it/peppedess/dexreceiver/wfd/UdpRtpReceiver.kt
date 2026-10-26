@@ -82,5 +82,8 @@ class UdpRtpReceiver(
         worker = null
     }
 
+    /** Returns the actual UDP port, including when the receiver was started with port 0. */
+    fun localPort(): Int = socket?.localPort ?: -1
+
     fun isRunning(): Boolean = running.get()
 }
