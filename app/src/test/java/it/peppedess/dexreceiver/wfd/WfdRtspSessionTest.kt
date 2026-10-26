@@ -150,6 +150,6 @@ class WfdRtspSessionTest {
         assertTrue(response.contains("wfd_client_rtp_ports:"))
         assertTrue(response.contains("wfd_idr_request_capability: 1"))
         val declared = Regex("Content-Length: (\\d+)").find(response)!!.groupValues[1].toInt()
-        val body = response.substringAfter("\\r\\n\\r\\n")
+        val body = response.substringAfter("\r\n\r\n")
         assertEquals(declared, body.toByteArray(Charsets.UTF_8).size)
     }
