@@ -18,8 +18,7 @@ import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
-import it.peppedess.dexreceiver.wfd.WfdRtspTcpServer
-import it.peppedess.dexreceiver.wfd.WfdRtspSession
+import it.peppedess.dexreceiver.wfd.WfdRtspSinkClient
 import it.peppedess.dexreceiver.wfd.WfdMediaTransport
 import it.peppedess.dexreceiver.media.H264SurfaceDecoder
 import rikka.shizuku.Shizuku
@@ -37,7 +36,8 @@ class MainActivity : Activity() {
     private var wifiP2pManager: WifiP2pManager? = null
     private var p2pChannel: WifiP2pManager.Channel? = null
     private var receiverRegistered = false
-    @Volatile private var rtspServer: WfdRtspTcpServer? = null
+    @Volatile private var rtspSinkClient: WfdRtspSinkClient? = null
+    @Volatile private var rtspSourceAddress: String? = null
     private val logLines = mutableListOf<String>()
     private val shizukuRequestCode = 7206
     private val shizukuBinderReceived = Shizuku.OnBinderReceivedListener { refreshShizukuStatus() }
@@ -155,19 +155,19 @@ class MainActivity : Activity() {
             setOnClickListener { discoverPeers() }
         }
         val start = Button(this).apply {
-            text = "AVVIA SERVER RTSP · 7236"
-            setOnClickListener { startRtspServer() }
+            text = "AVVIA CLIENT RTSP · 7236"
+            setOnClickListener { startRtspSinkClient() }
         }
         val group = Button(this).apply {
             text = "CREA RETE WI-FI DIRECT"
             setOnClickListener { createReceiverGroup() }
         }
         val stop = Button(this).apply {
-            text = "FERMA SERVER"
-            setOnClickListener { stopRtspServer() }
+            text = "FERMA RICEZIONE"
+            setOnClickListener { stopRtspReceiver() }
         }
         val note = TextView(this).apply {
-            text = "Ricevitore WFD sperimentale. Su Android 14+ viene richiesto al framework l’annuncio PRIMARY_SINK e la modalità LISTEN. Se CONFIGURE_WIFI_DISPLAY è negato, il gruppo P2P e RTSP restano solo diagnostici: DeX potrebbe non vedere il telefono."
+            text = "Client RTSP sink: il Samsung (source) deve essere Group Owner; questo Xiaomi si collega al suo TCP 7236. La negoziazione WFD completa verrà aggiunta nel passaggio successivo."
             textSize = 13f
             setTextColor(0xFFD0CCDD.toInt())
             setPadding(0, 14, 0, 14)
@@ -225,12 +225,24 @@ class MainActivity : Activity() {
         try {
             manager.requestConnectionInfo(channel) { info ->
                 if (info.groupFormed) {
-                    log("Connessione Wi-Fi Direct stabilita · Group Owner: ${info.isGroupOwner}")
-                    log("Indirizzo Group Owner: ${info.groupOwnerAddress?.hostAddress ?: "non disponibile"}")
-                    if (info.isGroupOwner) startRtspServer()
-                    updateStatus(if (info.isGroupOwner) "GRUPPO RICEVITORE ATTIVO" else "COLLEGATO AL GRUPPO P2P")
+                    val groupOwner = info.groupOwnerAddress?.hostAddress
+                    log("Connessione Wi-Fi Direct stabilita · questo dispositivo Group Owner: ${info.isGroupOwner}")
+                    log("Indirizzo Group Owner: ${groupOwner ?: "non disponibile"}")
+                    if (info.isGroupOwner) {
+                        rtspSourceAddress = null
+                        log("Ruolo P2P errato per il sink: il Samsung source deve essere Group Owner. Non avvio un server RTSP.")
+                        updateStatus("P2P ATTIVO · ATTESA SOURCE COME GO")
+                    } else if (!groupOwner.isNullOrBlank()) {
+                        rtspSourceAddress = groupOwner
+                        updateStatus("SOURCE P2P CONNESSO · AVVIO RTSP CLIENT")
+                        startRtspSinkClient(groupOwner)
+                    } else {
+                        log("Indirizzo del source non disponibile: client RTSP non avviato.")
+                    }
                 } else {
+                    rtspSourceAddress = null
                     log("Nessun gruppo Wi-Fi Direct attivo.")
+                    updateStatus("IN ATTESA DI WI-FI DIRECT")
                 }
             }
         } catch (e: SecurityException) {
@@ -258,7 +270,7 @@ class MainActivity : Activity() {
     private fun createReceiverGroup() {
         if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
             requestPermissions(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION), 411)
-            log("Concedi la posizione e premi di nuovo CREA RETE WI-FI DIRECT.")
+            log("Concedi la posizione e premi di nuovo ATTENDI CONNESSIONE.")
             return
         }
         val manager = wifiP2pManager
@@ -268,8 +280,7 @@ class MainActivity : Activity() {
             log("Wi-Fi Direct non disponibile.")
             return
         }
-        updateStatus("CREAZIONE RETE WI-FI DIRECT…")
-        // Ask the Android Wi-Fi framework to advertise this device as a WFD primary sink.
+        updateStatus("ATTIVAZIONE ASCOLTO WI-FI DIRECT…")
         if (Build.VERSION.SDK_INT >= 34) {
             try {
                 val wfdInfo = WifiP2pWfdInfo().apply {
@@ -280,45 +291,32 @@ class MainActivity : Activity() {
                     setMaxThroughput(50)
                 }
                 manager.setWfdInfo(channel, wfdInfo, object : WifiP2pManager.ActionListener {
-                    override fun onSuccess() { log("Framework WFD configured as PRIMARY_SINK on RTSP 7236.") }
-                    override fun onFailure(reason: Int) { log("setWfdInfo rejected ($reason); CONFIGURE_WIFI_DISPLAY may be unavailable.") }
+                    override fun onSuccess() { log("Framework WFD configurato come PRIMARY_SINK · porta sink 7236.") }
+                    override fun onFailure(reason: Int) { log("Annuncio WFD rifiutato ($reason): CONFIGURE_WIFI_DISPLAY potrebbe mancare.") }
                 })
                 manager.startListening(channel, object : WifiP2pManager.ActionListener {
-                    override fun onSuccess() { log("Wi-Fi Direct LISTEN request accepted.") }
-                    override fun onFailure(reason: Int) { log("startListening failed ($reason).") }
+                    override fun onSuccess() {
+                        log("Wi-Fi Direct LISTEN attivo. Attendo che il Samsung avvii il gruppo come source.")
+                        updateStatus("IN ASCOLTO · ATTESA SAMSUNG DEX")
+                    }
+                    override fun onFailure(reason: Int) {
+                        log("Wi-Fi Direct LISTEN non riuscito ($reason).")
+                        updateStatus("ASCOLTO P2P NON DISPONIBILE")
+                    }
                 })
             } catch (e: SecurityException) {
-                log("WFD advertisement blocked: CONFIGURE_WIFI_DISPLAY is signature/privileged; root/Shizuku do not grant it.")
+                log("Annuncio/listen WFD bloccato dal firmware: ${e.message}")
+                updateStatus("WFD BLOCCATO DAL FIRMWARE")
             } catch (t: Throwable) {
-                log("WFD advertisement error: " + t.javaClass.simpleName + ": " + t.message)
+                log("Errore avvio ascolto WFD: ${t.message}")
+                updateStatus("ERRORE ASCOLTO WFD")
             }
+        } else {
+            log("L'API pubblica per WFD sink/listen richiede Android 14 o successivo.")
+            updateStatus("API WFD NON DISPONIBILE")
         }
-        val groupConfig = buildWfdGroupConfig()
-        manager.createGroup(channel, groupConfig, object : WifiP2pManager.ActionListener {
-            override fun onSuccess() {
-                log("Gruppo Wi-Fi Direct creato. Il dispositivo dovrebbe essere Group Owner.")
-                manager.requestConnectionInfo(channel) { info ->
-                    log("Group Owner: ${info.isGroupOwner} · indirizzo: ${info.groupOwnerAddress?.hostAddress ?: "non ancora assegnato"}")
-                    if (info.groupFormed) {
-                        updateStatus("RETE P2P ATTIVA · RTSP IN AVVIO")
-                        startRtspServer()
-                    } else {
-                        updateStatus("GRUPPO IN CONFIGURAZIONE")
-                    }
-                }
-                manager.requestGroupInfo(channel) { groupInfo ->
-                    if (groupInfo != null) {
-                        log("SSID: ${groupInfo.networkName}")
-                        log("Client connessi: ${groupInfo.clientList.size}")
-                    }
-                }
-            }
-            override fun onFailure(reason: Int) {
-                log("Creazione gruppo fallita. Codice: $reason")
-                updateStatus("RETE WI-FI DIRECT NON CREATA")
-            }
-        })
     }
+
     private fun verifyRootAccess() {
         updateStatus("VERIFICA ROOT…")
         Thread {
@@ -424,33 +422,32 @@ class MainActivity : Activity() {
         }
         return config
     }
-    private fun startRtspServer() {
-        if (rtspServer?.isRunning() == true) {
-            log("Il server RTSP è già attivo.")
+    private fun startRtspSinkClient(sourceAddress: String? = rtspSourceAddress) {
+        if (rtspSinkClient?.isRunning() == true) {
+            log("Il client RTSP sink è già connesso.")
             return
         }
-        val server = WfdRtspTcpServer(
-            port = 7236,
+        val address = sourceAddress?.takeIf { it.isNotBlank() }
+        if (address == null) {
+            log("Nessun source Wi-Fi Direct disponibile. Connetti prima il Samsung come Group Owner.")
+            updateStatus("IN ATTESA DEL SOURCE P2P")
+            return
+        }
+        val client = WfdRtspSinkClient(
+            sourceAddress = address,
+            controlPort = 7236,
             onLog = { message ->
                 log(message)
-                if (message.startsWith("RTSP in ascolto")) updateStatus("RTSP ATTIVO · TCP 7236")
-                if (message.startsWith("Errore server")) updateStatus("ERRORE SERVER")
-            },
-            sessionFactory = {
-                WfdRtspSession(
-                    mediaPort = 19000,
-                    onStartMedia = { port -> startMediaReceiver(port) },
-                    onStopMedia = { stopMediaReceiver() },
-                    onPauseMedia = { mediaTransport?.pause() },
-                    onResumeMedia = { mediaTransport?.resume() }
-                )
+                if (message.startsWith("RTSP sink connesso")) updateStatus("RTSP CLIENT CONNESSO · M1/M2")
+                if (message.startsWith("Connessione RTSP sink terminata")) updateStatus("RTSP DISCONNESSO")
             }
         )
-        rtspServer = server
-        updateStatus("AVVIO SERVER RTSP…")
-        if (!server.start()) {
-            log("Il server non è stato avviato.")
-            updateStatus("AVVIO NON RIUSCITO")
+        rtspSinkClient = client
+        updateStatus("CONNESSIONE RTSP AL SOURCE…")
+        if (!client.start()) {
+            rtspSinkClient = null
+            log("Avvio client RTSP sink non riuscito.")
+            updateStatus("AVVIO CLIENT RTSP FALLITO")
         }
     }
 
@@ -493,13 +490,14 @@ class MainActivity : Activity() {
         videoDecoder = null
     }
 
-    private fun stopRtspServer() {
-        rtspServer?.stop()
-        rtspServer = null
+    private fun stopRtspReceiver() {
+        rtspSinkClient?.stop()
+        rtspSinkClient = null
+        rtspSourceAddress = null
         stopMediaReceiver()
         stopReceiverGroup()
-        updateStatus("SERVER E RETE P2P FERMI")
-        log("Server RTSP arrestato.")
+        updateStatus("RICEZIONE E RETE P2P FERME")
+        log("Client RTSP sink e gruppo P2P arrestati.")
     }
 
     private fun stopReceiverGroup() {
@@ -535,7 +533,7 @@ class MainActivity : Activity() {
         Shizuku.removeBinderReceivedListener(shizukuBinderReceived)
         Shizuku.removeBinderDeadListener(shizukuBinderDead)
         Shizuku.removeRequestPermissionResultListener(shizukuPermissionResult)
-        stopRtspServer()
+        stopRtspReceiver()
         super.onDestroy()
     }
 }
