@@ -140,3 +140,16 @@ class WfdRtspSessionTest {
     }
 
 }
+
+    @Test
+    fun emptyGetParameterReturnsCompleteWfdCapabilitySet() {
+        val response = WfdRtspSession().handle(request("GET_PARAMETER", "18"))
+        assertTrue(response.startsWith("RTSP/1.0 200 OK"))
+        assertTrue(response.contains("wfd_video_formats:"))
+        assertTrue(response.contains("wfd_audio_codecs: none"))
+        assertTrue(response.contains("wfd_client_rtp_ports:"))
+        assertTrue(response.contains("wfd_idr_request_capability: 1"))
+        val declared = Regex("Content-Length: (\\d+)").find(response)!!.groupValues[1].toInt()
+        val body = response.substringAfter("\\r\\n\\r\\n")
+        assertEquals(declared, body.toByteArray(Charsets.UTF_8).size)
+    }
