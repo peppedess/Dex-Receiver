@@ -35,6 +35,8 @@ class UdpRtpReceiver(
         socket = bound
         worker = Thread({
             val buffer = ByteArray(65507)
+            var receivedPackets = 0L
+            var receivedBytes = 0L
             while (running.get()) {
                 try {
                     val datagram = DatagramPacket(buffer, buffer.size)
@@ -42,8 +44,18 @@ class UdpRtpReceiver(
                     val packet = RtpPacketParser.parse(
                         datagram.data.copyOfRange(datagram.offset, datagram.offset + datagram.length)
                     )
-                    if (packet == null) onLog("Datagramma UDP scartato: header RTP non valido.")
-                    else onPacket(packet)
+                    if (packet == null) {
+                        onLog("Datagramma UDP scartato: header RTP non valido.")
+                    } else {
+                        receivedPackets++
+                        receivedBytes += datagram.length
+                        if (receivedPackets == 1L) {
+                            onLog("Primo RTP ricevuto da ${datagram.address.hostAddress}:${datagram.port} · PT ${packet.payloadType} · SSRC ${packet.ssrc}.")
+                        } else if (receivedPackets % 500L == 0L) {
+                            onLog("RTP: $receivedPackets pacchetti · $receivedBytes byte ricevuti · ultimo seq ${packet.sequenceNumber}.")
+                        }
+                        onPacket(packet)
+                    }
                 } catch (_: java.net.SocketTimeoutException) {
                     // Periodic stop check.
                 } catch (e: SocketException) {
