@@ -20,7 +20,7 @@ class UdpRtpReceiverTest {
             val bytes = byteArrayOf(
                 0x80.toByte(), 0xE0.toByte(), 0x00, 0x2A,
                 0x00, 0x00, 0x00, 0x01, 0x01, 0x02, 0x03, 0x04,
-                0x65, 0x88, 0x84
+                0x65.toByte(), 0x88.toByte(), 0x84.toByte()
             )
             DatagramSocket().use { sender ->
                 sender.send(DatagramPacket(bytes, bytes.size, InetAddress.getLoopbackAddress(), port))
