@@ -273,46 +273,70 @@ class MainActivity : Activity() {
             return
         }
         val manager = wifiP2pManager
-        val channel = p2pChannel ?: manager?.initialize(this, mainLooper) { log("Canale Wi-Fi Direct disconnesso.") }
-            ?.also { p2pChannel = it }
+        val channel = p2pChannel ?: manager?.initialize(this, mainLooper) {
+            log("Canale Wi-Fi Direct disconnesso.")
+        }?.also { p2pChannel = it }
+
         if (manager == null || channel == null) {
             log("Wi-Fi Direct non disponibile.")
+            updateStatus("WI-FI DIRECT NON DISPONIBILE")
             return
         }
-        updateStatus("ATTIVAZIONE ASCOLTO WI-FI DIRECT…")
-        if (Build.VERSION.SDK_INT >= 34) {
-            try {
-                val wfdInfo = WifiP2pWfdInfo().apply {
-                    setEnabled(true)
-                    setDeviceType(WifiP2pWfdInfo.DEVICE_TYPE_PRIMARY_SINK)
-                    setSessionAvailable(true)
-                    setControlPort(7236)
-                    setMaxThroughput(50)
-                }
-                manager.setWfdInfo(channel, wfdInfo, object : WifiP2pManager.ActionListener {
-                    override fun onSuccess() { log("Framework WFD configurato come PRIMARY_SINK · porta sink 7236.") }
-                    override fun onFailure(reason: Int) { log("Annuncio WFD rifiutato ($reason): CONFIGURE_WIFI_DISPLAY potrebbe mancare.") }
-                })
-                manager.startListening(channel, object : WifiP2pManager.ActionListener {
-                    override fun onSuccess() {
-                        log("Wi-Fi Direct LISTEN attivo. Attendo che il Samsung avvii il gruppo come source.")
-                        updateStatus("IN ASCOLTO · ATTESA SAMSUNG DEX")
-                    }
-                    override fun onFailure(reason: Int) {
-                        log("Wi-Fi Direct LISTEN non riuscito ($reason).")
-                        updateStatus("ASCOLTO P2P NON DISPONIBILE")
-                    }
-                })
-            } catch (e: SecurityException) {
-                log("Annuncio/listen WFD bloccato dal firmware: ${e.message}")
-                updateStatus("WFD BLOCCATO DAL FIRMWARE")
-            } catch (t: Throwable) {
-                log("Errore avvio ascolto WFD: ${t.message}")
-                updateStatus("ERRORE ASCOLTO WFD")
+        if (Build.VERSION.SDK_INT < 34) {
+            log("Registrazione pubblica WFD sink/listen non disponibile su Android API ${Build.VERSION.SDK_INT}.")
+            updateStatus("API WFD SINK NON DISPONIBILE")
+            return
+        }
+
+        if (checkSelfPermission("android.permission.CONFIGURE_WIFI_DISPLAY") != PackageManager.PERMISSION_GRANTED) {
+            log("CONFIGURE_WIFI_DISPLAY non concesso: il firmware non consente all'app di registrarsi come sink WFD.")
+            updateStatus("PERMESSO WFD NEGATO DAL SISTEMA")
+            return
+        }
+
+        updateStatus("REGISTRAZIONE WFD SINK…")
+        try {
+            val wfdInfo = WifiP2pWfdInfo().apply {
+                setEnabled(true)
+                setDeviceType(WifiP2pWfdInfo.DEVICE_TYPE_PRIMARY_SINK)
+                setSessionAvailable(true)
+                setControlPort(7236)
+                setMaxThroughput(50)
             }
-        } else {
-            log("L'API pubblica per WFD sink/listen richiede Android 14 o successivo.")
-            updateStatus("API WFD NON DISPONIBILE")
+            manager.setWfdInfo(channel, wfdInfo, object : WifiP2pManager.ActionListener {
+                override fun onSuccess() {
+                    log("Framework ha accettato WFD PRIMARY_SINK · porta RTSP 7236.")
+                    // startListening is sequenced after successful WFD registration; parallel calls
+                    // can race and leave the device listening without advertising the sink role.
+                    try {
+                        manager.startListening(channel, object : WifiP2pManager.ActionListener {
+                            override fun onSuccess() {
+                                log("Wi-Fi Direct LISTEN attivo dopo la registrazione WFD.")
+                                updateStatus("WFD SINK PUBBLICATO · IN ASCOLTO")
+                            }
+
+                            override fun onFailure(reason: Int) {
+                                log("Registrazione WFD riuscita, ma LISTEN P2P fallito (codice $reason).")
+                                updateStatus("WFD REGISTRATO · LISTEN FALLITO")
+                            }
+                        })
+                    } catch (security: SecurityException) {
+                        log("LISTEN P2P bloccato dal firmware: ${security.message}")
+                        updateStatus("LISTEN BLOCCATO DAL FIRMWARE")
+                    }
+                }
+
+                override fun onFailure(reason: Int) {
+                    log("Framework ha rifiutato WFD PRIMARY_SINK (codice $reason).")
+                    updateStatus("ANNUNCIO WFD RIFIUTATO")
+                }
+            })
+        } catch (security: SecurityException) {
+            log("Registrazione WFD bloccata dal firmware: ${security.message}")
+            updateStatus("WFD BLOCCATO DAL FIRMWARE")
+        } catch (error: Throwable) {
+            log("Errore registrazione WFD: ${error.message ?: error.javaClass.simpleName}")
+            updateStatus("ERRORE REGISTRAZIONE WFD")
         }
     }
 
