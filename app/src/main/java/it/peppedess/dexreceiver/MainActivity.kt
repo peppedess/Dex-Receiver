@@ -414,9 +414,17 @@ class MainActivity : Activity() {
         val client = WfdRtspSinkClient(
             sourceAddress = address,
             controlPort = 7236,
+            mediaPort = 19000,
+            onStartMedia = { port -> startMediaReceiver(port) },
+            onStopMedia = { stopMediaReceiver() },
+            onPauseMedia = { mediaTransport?.pause() },
+            onResumeMedia = { mediaTransport?.resume() },
             onLog = { message ->
                 log(message)
                 if (message.startsWith("RTSP sink connesso")) updateStatus("RTSP CLIENT CONNESSO · M1/M2")
+                if (message.startsWith("M4 capability")) updateStatus("WFD CAPABILITIES NEGOZIATE")
+                if (message.startsWith("M6 SETUP")) updateStatus("RTP PREPARATO · IN ATTESA PLAY")
+                if (message.startsWith("M7 PLAY")) updateStatus("RICEZIONE VIDEO ATTIVA")
                 if (message.startsWith("Connessione RTSP sink terminata")) updateStatus("RTSP DISCONNESSO")
             }
         )
